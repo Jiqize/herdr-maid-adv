@@ -4,3 +4,5 @@ art/samples/
 .DS_Store
 __pycache__/
 art/ai/*/codex.log
+art/ai/gen_v3.log
+art/ai/gen_v3.done

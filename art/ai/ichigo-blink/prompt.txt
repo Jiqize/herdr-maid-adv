@@ -1,0 +1,3 @@
+Edit the attached image and save the result as a PNG file at this absolute path: art/ai/ichigo-blink/ichigo-blink.png
+
+Make an EXACT copy of the attached character image (same size, same canvas, same pose, same position, same lineart, same colors, same flat pure green background) with ONLY ONE change: her eyes are gently CLOSED (a natural blink, eyelids down, curved closed-eye lines), mouth unchanged. Everything else must stay pixel-identical: do not move, rescale, crop, recolor or redraw anything else. Output exactly ONE image.
