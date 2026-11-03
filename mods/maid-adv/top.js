@@ -1,8 +1,9 @@
 // 顶栏：章节徽章「第 N 话」+ space 名（点开章节选择）、◀ ▶ 切换 space、tab 书签、+、Files / Changes / 舞台开关
 import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { spaces, panes, agents, run, openOverlay, shared, layout } from "herdr";
+import { spaces, panes, agents, run, openOverlay, shared, setShared, layout, props } from "herdr";
 import { asset, assign, maidOf, find, STATUS_COLOR } from "./state.js";
+import { tomatoLeft } from "./care.js";
 
 const stop = (_e, cx) => cx.stop_propagation();
 
@@ -12,7 +13,23 @@ function tabName(c, ps) {
   return program?.name ?? "Terminal";
 }
 
-export function top(view, t) {
+// 番茄钟剩余分钟：整分钟刷新一次（一次性 timer，同时只挂一个）
+function tomatoPill(view, t, cx) {
+  const until = props()?.demo?.tomato ?? shared("adv.tomato") ?? 0;
+  const now = Date.now();
+  if (until <= now) return null;
+  if (!view.tomT && !props()?.demo) {
+    view.tomT = true;
+    cx.timer.after(((until - now) % 60000) + 50, (cx) => { view.tomT = false; cx.notify(); });
+  }
+  return h_flex().id("adv-tomato").h(26).px(10).gap(4).flex_none().items_center().rounded(13)
+    .bg("#ff6b5a1f").border(1).border_color("#ff6b5a88").cursor_pointer()
+    .text_size(12).text_color(t.foreground).tooltip("番茄钟（点击取消）")
+    .on_mouse_down("left", stop).on_click(() => setShared("adv.tomato", null))
+    .child("🍅").child(`${tomatoLeft(until, now)} 分`);
+}
+
+export function top(view, t, cx) {
   const list = spaces();
   const i = list.findIndex((s) => s.active);
   const space = list[i];
@@ -66,6 +83,7 @@ export function top(view, t) {
     .tooltip(tip).on_mouse_down("left", stop).on_click(action)
     .child(svg(icon).size(16));
 
+  const pill = tomatoPill(view, t, cx);
   const root = layout();
   const panel = find(root, "panel");
   const body = find(root, "panel-body");
@@ -89,6 +107,7 @@ export function top(view, t) {
     .child(h_flex().id("adv-tabs").flex_1().min_w(0).gap(4).items_center().overflow_x_scrollbar().children(tabs.map(tab))
       .child(iconButton("adv-tab-new", "mods/workspace-chrome/plus.svg", "新建 tab", false,
         () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 }))))
+    .when(Boolean(pill), (el) => el.child(pill))
     .when(enabled.includes("files"), (el) => el.child(panelButton("files", "mods/files/file.svg", "Files")))
     .when(enabled.includes("changes"), (el) => el.child(panelButton("changes", "mods/changes/changes.svg", "Changes")))
     .child(iconButton("adv-stage", "mods/workspace-chrome/panel-right.svg", "舞台（⌘B）", Boolean(stageNode && !stageNode.hidden),

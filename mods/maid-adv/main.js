@@ -8,7 +8,7 @@ import { top } from "./top.js";
 import { stage } from "./stage.js";
 import { dialog } from "./dialog.js";
 import { paneHeader } from "./pane.js";
-import { chapters, log, title, gallery, cgview, report } from "./overlays.js";
+import { chapters, log, title, gallery, cgview, report, week } from "./overlays.js";
 
 export default class MaidAdv extends View {
   init(_props, cx) {
@@ -50,7 +50,7 @@ export default class MaidAdv extends View {
     const t = theme();
     if (props()?.pane) return paneHeader(this, t);
     const part = props()?.part;
-    if (part === "top") return top(this, t);
+    if (part === "top") return top(this, t, cx);
     if (part === "stage") return stage(this, t, cx);
     if (part === "dialog") return dialog(this, t, cx);
     if (part === "chapters") return chapters(this, t);
@@ -59,6 +59,7 @@ export default class MaidAdv extends View {
     if (part === "gallery") return gallery(this, t, cx);
     if (part === "cgview") return cgview(this, t);
     if (part === "report") return report(this, t);
+    if (part === "week") return week(this, t);
     return div();
   }
 }

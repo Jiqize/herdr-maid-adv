@@ -1,10 +1,10 @@
-// 两个浮层：章节选择（全部 space）、LOG（最近 60 句台词）
+// 浮层：章节选择（全部 space）、LOG（最近 60 句台词）、标题、CG 鉴赏、日报、本周回忆
 import { div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { spaces, agents, run, props, closeOverlay, openOverlay } from "herdr";
 import M from "./manifest.js";
 import { CG_LINES, CG_LEVEL, LOVE_TITLES, reportComment } from "./lines.js";
-import { asset, assign, maidOf, readLog, STATUS_COLOR, STATUS_TEXT, crew, rin, cgUnlocked, loveOf, loveTitle, daily } from "./state.js";
+import { asset, assign, maidOf, readLog, STATUS_COLOR, STATUS_TEXT, crew, rin, cgUnlocked, loveOf, loveTitle, daily, dayStats, weekStart } from "./state.js";
 
 const close = () => { const id = props()?.overlay; if (id) closeOverlay(id); };
 
@@ -155,4 +155,57 @@ export function report(view, t) {
     .child(row("今天收获的好感", `♥ ${d.love}`, "#ef4f7e"))
     .child(div().mt(6).p(12).rounded(10).bg(`${r.color}1a`).border(1).border_color(`${r.color}66`)
       .text_size(13).text_color(t.foreground).child(`「${reportComment(avg, d.done + d.blocked)}」`));
+}
+
+// 本周回忆：周一到周日每天的完成数、本周 MVP、本周解锁的 CG
+//   demo：props.demo.days = 7 个 {done, by}，props.demo.cg = [女仆 id]
+export function week(view, t) {
+  const demo = props()?.demo;
+  const ws = weekStart();
+  const today = new Date().getDay();
+  const days = [0, 1, 2, 3, 4, 5, 6].map((i) => {
+    const d = new Date(ws);
+    d.setDate(d.getDate() + i);
+    const s = demo?.days ? demo.days[i] : d.getTime() <= Date.now() ? dayStats(d.getTime()) : null;
+    return { label: "一二三四五六日"[i], s, today: (i + 1) % 7 === today };
+  });
+  const max = Math.max(1, ...days.map((d) => d.s?.done ?? 0));
+  const by = {};
+  for (const d of days) for (const [mid, n] of Object.entries(d.s?.by ?? {})) by[mid] = (by[mid] ?? 0) + n;
+  const mvp = Object.entries(by).sort((a, b) => b[1] - a[1])[0];
+  const total = days.reduce((n, d) => n + (d.s?.done ?? 0), 0);
+  const cgs = demo?.cg ?? Object.entries(cgUnlocked()).filter(([, ts]) => ts >= ws).map(([mid]) => mid);
+  const r = rin();
+  const H = 130;
+  const bar = (d, k) => v_flex().id(`wk-${k}`).flex_1().items_center().gap(4)
+    .child(div().text_size(11).text_color(t.dim).child(d.s ? String(d.s.done) : ""))
+    .child(div().h(H).w_full().flex().flex_col().justify_end().items_center()
+      .child(div().w(26).rounded_t(6).h(Math.max(d.s?.done ? 4 : 0, Math.round(H * (d.s?.done ?? 0) / max)))
+        .bg(d.today ? "#ef4f7e" : `${r.color}aa`)))
+    .child(div().text_size(12).font_weight(d.today ? 800 : 400).text_color(d.today ? "#ef4f7e" : t.muted).child(d.label));
+  const m = mvp ? maidOf(mvp[0]) : null;
+  return v_flex().size_full().p(18).gap(12)
+    .child(h_flex().gap(12).items_center()
+      .child(div().size(48).rounded_full().overflow_hidden().border(2).border_color(r.color).child(image(asset(r.head.happy)).size(44)))
+      .child(v_flex().flex_1().gap(2)
+        .child(div().text_size(16).font_weight(800).text_color(t.foreground).child("本周回忆"))
+        .child(div().text_size(12).text_color(t.dim).child(`这周一共完成了 ${total} 件工作`)))
+      .child(div().id("wk-x").px(8).cursor_pointer().text_color(t.dim).hover((s) => s.text_color(t.foreground)).on_click(close).child("关闭")))
+    .child(h_flex().p(12).gap(6).rounded(10).bg(t.surface).children(days.map(bar)))
+    .child(h_flex().gap(12).items_stretch()
+      .child(v_flex().w(220).flex_none().p(12).gap(6).rounded(10).bg(t.surface)
+        .child(div().text_size(12).text_color(t.muted).child("本周 MVP"))
+        .child(m
+          ? h_flex().gap(10).items_center()
+            .child(div().size(52).rounded_full().overflow_hidden().border(2).border_color(m.color).child(image(asset(m.head.happy)).size(48)))
+            .child(v_flex().gap(2)
+              .child(div().text_size(15).font_weight(800).text_color(m.color).child(m.name))
+              .child(div().text_size(12).text_color(t.dim).child(`完成 ${mvp[1]} 件`)))
+          : div().text_size(13).text_color(t.dim).child("这周还没有完成的工作")))
+      .child(v_flex().flex_1().min_w(0).p(12).gap(6).rounded(10).bg(t.surface)
+        .child(div().text_size(12).text_color(t.muted).child(`本周解锁的 CG · ${cgs.length} 张`))
+        .child(cgs.length
+          ? h_flex().flex_wrap().gap(6).children(cgs.filter((mid) => M.cg[mid]).map((mid) => div().w(96).h(54).rounded(6).overflow_hidden()
+            .border(1).border_color(maidOf(mid).color).child(image(asset(M.cg[mid].thumb)).w(96).h(54))))
+          : div().text_size(13).text_color(t.dim).child("这周还没有解锁新的 CG"))));
 }

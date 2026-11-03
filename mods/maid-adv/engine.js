@@ -1,26 +1,46 @@
 // 对话导演：把 Agent 的状态变化变成排队的台词，同一时间只让一位女仆说话
 //   事件：greet 开店问候（女仆长）/ intro 新 Agent 自我介绍 / done 做好了 / blocked 请问 / angry 等太久
+//   系统事件（不属于某个 Agent）：report 日报 / rest 建议休息 / breakEnd 休息结束 / tomato 番茄钟到 / offwork 下班 / week 本周回忆
 //   优先级：angry = blocked > done > intro > greet；同级按发生时间
 //   没有事件时说「现状」：当前窗格的女仆在忙就说她自己，否则女仆长汇报
 //   所有时间变化用一次性 cx.timer.after 唤醒
 import { agents, spaces, panes, run, hc, shared, setShared, openOverlay } from "herdr";
-import { PERSONA, RIN, pick, fill } from "./lines.js";
-import { assign, maidOf, rin, addLove, where, HOT, record } from "./state.js";
+import { PERSONA, RIN, CARE, pick, fill } from "./lines.js";
+import { assign, maidOf, rin, addLove, where, HOT, record, dayKey, dayStats, weekStart } from "./state.js";
+import { Care, TOMATO_MS } from "./care.js";
 import { readScreen, parseOptions, summarize } from "./smart.js";
 
 const MIN = 60000;
 const ANGRY_AFTER = 5 * MIN;
 const REPLY_MS = 2600;
-const RANK = { angry: 0, blocked: 0, done: 1, intro: 2, report: 3, greet: 3 };
+const RANK = { angry: 0, blocked: 0, done: 1, tomato: 1, intro: 2, report: 3, greet: 3, rest: 3, breakEnd: 3, offwork: 3, week: 3 };
 const REPORT_HOUR = 18;
+const OFF_HOUR = 19;
+// 系统事件：不跟着 Agent 结算，只有主人回应了才离开队列
+const SYSTEM = new Set(["greet", "report", "rest", "breakEnd", "tomato", "offwork", "week"]);
 const MOOD = { report: "happy", greet: "normal", intro: "happy", done: "happy", blocked: "ask", angry: "pout" };
 const CHOICES = {
   greet: [["我回来了", "home"]],
   report: [["看看日报", "report"], ["明天再说", "dismiss"]],
+  rest: [["休息 5 分钟", "break"], ["再干一会儿", "dismiss"]],
+  breakEnd: [["继续加油", "ok"]],
+  tomato: [["好", "ok"], ["再来一个", "again"]],
+  offwork: [["这就下班", "ok"], ["再忙一会儿", "dismiss"]],
+  week: [["看看本周回忆", "week"], ["下次吧", "dismiss"]],
   intro: [["请多关照", "hello"]],
   done: [["马上去看", "go"], ["待会儿", "later"], ["辛苦了", "thanks"]],
   blocked: [["这就来", "go"], ["再等一下", "wait"]],
   angry: [["对不起，这就来", "go"], ["再等一下", "wait"]],
+};
+
+// 系统事件被回应后，说话人的回答
+const SYS_REPLY = {
+  "report:report": "请过目。", "report:dismiss": "好的，那明天再说吧。",
+  "rest:break": CARE.restOk, "rest:dismiss": CARE.restNo,
+  "breakEnd:ok": CARE.breakOk,
+  "tomato:ok": CARE.tomatoOk, "tomato:again": CARE.tomatoAgain,
+  "offwork:ok": CARE.offOk, "offwork:dismiss": CARE.offNo,
+  "week:week": CARE.weekOk, "week:dismiss": CARE.weekNo,
 };
 
 export class Director {
@@ -32,6 +52,8 @@ export class Director {
     this.reply = null;
     this.wakeAt = Infinity;
     this.seq = 0;
+    this.care = null;
+    this.lastFocus = null;
   }
 
   wake(cx, at, now) {
@@ -94,7 +116,16 @@ export class Director {
     const live = new Map(list.map((a) => [a.address, a]));
 
     if (!this.init) {
-      this.queue.push({ kind: "greet", address: "rin", maid: rin().id, at: now, key: "greet" });
+      this.care = new Care(now);
+      // 每天第一次的问候：提一句昨天的日报
+      let text = null;
+      if (shared("adv.morningDay") !== dayKey(now)) {
+        setShared("adv.morningDay", dayKey(now));
+        const y = dayStats(now - 86400000);
+        const l = y?.longest;
+        text = CARE.morning(y, l ? maidOf(l.maid).name : null, l ? Math.max(1, Math.round(l.ms / MIN)) : 0);
+      }
+      this.queue.push({ kind: "greet", address: "rin", maid: rin().id, at: now, key: "greet", text });
       // 启动时已经做好 / 在等的，直接排进队列
       for (const a of list) if (HOT(a.status) && !a.focused) this.push({ kind: a.status, address: a.address, pane: a.pane, maid: mids.get(a.address), at: now }, cx);
     } else {
@@ -113,7 +144,7 @@ export class Director {
     // 结算：Agent 消失、状态变了、主人已经切过去
     let levelUp = null;
     this.queue = this.queue.filter((ev) => {
-      if (ev.kind === "greet") return true;
+      if (SYSTEM.has(ev.kind)) return true;
       const a = live.get(ev.address);
       if (!a) return false;
       if (ev.kind === "intro") return true;
@@ -138,6 +169,30 @@ export class Director {
     }
     for (const ev of this.queue) if (ev.snooze > now) this.wake(cx, ev.snooze, now);
 
+    // 作息：有没有动静（状态变化或换了聚焦）→ 休息建议 / 休息结束 / 番茄钟
+    const focus = list.find((a) => a.focused)?.address ?? null;
+    const activity = this.init && (focus !== this.lastFocus || list.some((a) => this.last.get(a.address) !== a.status));
+    this.lastFocus = focus;
+    const tomato = shared("adv.tomato") ?? 0;
+    for (const due of this.care.tick(now, activity, tomato)) {
+      if (due === "tomato") setShared("adv.tomato", null);
+      this.sys(due, due === "tomato" ? this.onDuty(list, mids) : rin().id, now);
+    }
+    // 晚上 7 点后提醒下班（每天一次）；周五起提议看本周回忆（每周一次）
+    const dt = new Date(now);
+    if (dt.getHours() >= OFF_HOUR && shared("adv.offDay") !== dayKey(now)) {
+      setShared("adv.offDay", dayKey(now));
+      this.sys("offwork", rin().id, now);
+    }
+    const wk = String(weekStart(now));
+    if ([5, 6, 0].includes(dt.getDay()) && shared("adv.weekShown") !== wk) {
+      setShared("adv.weekShown", wk);
+      this.sys("week", rin().id, now);
+    }
+    this.wake(cx, this.care.nextAt(now, shared("adv.tomato") ?? 0), now);
+    const off = new Date(now); off.setHours(OFF_HOUR, 0, 0, 0);
+    if (off.getTime() > now) this.wake(cx, off.getTime(), now);
+
     this.last = new Map(list.map((a) => [a.address, a.status]));
     this.init = true;
 
@@ -159,7 +214,7 @@ export class Director {
         line = this.lineFor(ev, live.get(ev.address), now);
       } else if (new Date(now).getHours() >= REPORT_HOUR && shared("adv.reportDay") !== new Date(now).toDateString()) {
         setShared("adv.reportDay", new Date(now).toDateString());
-        this.queue.push({ kind: "report", address: "rin", maid: rin().id, at: now, key: `report:${now}` });
+        this.sys("report", rin().id, now);
         this.curKey = null;
         line = this.ambient(list, mids, now);
       } else {
@@ -169,6 +224,27 @@ export class Director {
     }
     const waiting = this.queue.filter((e) => e.key !== this.curKey);
     return { line, queue: waiting, mids, levelUp };
+  }
+
+  sys(kind, maid, now) {
+    this.queue = this.queue.filter((e) => e.kind !== kind);
+    this.queue.push({ kind, address: `sys:${kind}`, maid, at: now, key: `${kind}:${++this.seq}` });
+  }
+
+  // 当班女仆：主人正看着的那位，否则第一位，没人就女仆长
+  onDuty(list, mids) {
+    const a = list.find((x) => x.focused) ?? list[0];
+    return (a && mids.get(a.address)) ?? rin().id;
+  }
+
+  // 🍅：开始 / 取消番茄钟
+  tomato() {
+    const now = Date.now();
+    const on = (shared("adv.tomato") ?? 0) > now;
+    setShared("adv.tomato", on ? null : now + TOMATO_MS);
+    this.queue = this.queue.filter((e) => e.kind !== "tomato");
+    this.curKey = null;
+    this.say(rin().id, on ? CARE.tomatoCancel : CARE.tomatoStart, "normal", now);
   }
 
   lineFor(ev, a, now) {
@@ -183,7 +259,10 @@ export class Director {
       return { id: ev.key, maid: ev.maid, mood: "happy", text: "主人，今天的营业日报已经整理好了。要过目吗？", choices, address: null, kind: ev.kind };
     }
     if (ev.kind === "greet") {
-      return { id: ev.key, maid: ev.maid, mood: "normal", text: pick(RIN.greet, new Date(now).toDateString()), choices, address: null, kind: ev.kind };
+      return { id: ev.key, maid: ev.maid, mood: "normal", text: ev.text ?? pick(RIN.greet, new Date(now).toDateString()), choices, address: null, kind: ev.kind };
+    }
+    if (SYSTEM.has(ev.kind)) {
+      return { id: ev.key, maid: ev.maid, mood: ev.kind === "tomato" || ev.kind === "week" ? "happy" : "normal", text: CARE[ev.kind], choices, address: null, kind: ev.kind };
     }
     const p = PERSONA[ev.maid] ?? PERSONA.ichigo;
     const vars = { where: a ? where(a) : "", prog: a?.program?.name ?? a?.app ?? "Agent", min: Math.max(1, Math.floor((now - ev.at) / MIN)) };
@@ -228,9 +307,13 @@ export class Director {
     }
     this.queue = this.queue.filter((e) => e !== ev);
     this.curKey = null;
-    if (act === "report" || act === "dismiss") {
+    const sysReply = SYS_REPLY[`${ev.kind}:${act}`];
+    if (sysReply) {
       if (act === "report") openOverlay({ mod: "maid-adv", kind: "dialog", width: 520, height: 560, props: { part: "report" } });
-      this.say(line.maid, act === "report" ? "请过目。" : "好的，那明天再说吧。", "normal", now);
+      if (act === "week") openOverlay({ mod: "maid-adv", kind: "dialog", width: 620, height: 520, props: { part: "week" } });
+      if (act === "break") this.care.takeBreak(now);
+      if (act === "again") setShared("adv.tomato", now + TOMATO_MS);
+      this.say(line.maid, sysReply, "normal", now);
       return;
     }
     if (act === "home") {

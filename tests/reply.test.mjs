@@ -15,5 +15,12 @@ r = d.update(cx);
 console.log("sent:", ok, JSON.stringify(S.hc), "| reply:", r.line.text);
 console.log("love:", JSON.stringify(S.shared["adv.love"]), "daily:", JSON.stringify(S.shared["adv.daily"]));
 clock += 5000; S.agents = [ag("a", "working")]; r = d.update(cx); console.log("after:", r.line.kind, r.line.text);
-clock += 5000; r = d.update(cx); console.log("evening:", r.line.kind, r.line.text);
+// 晚上：回应问候、下班提醒之后，日报邀请出来，点「看看日报」打开日报
+for (let i = 0; i < 6 && r.line.kind !== "report"; i++) {
+  if (r.line.kind === "greet") d.choose(r.line, "home");
+  if (r.line.kind === "offwork") d.choose(r.line, "dismiss");
+  clock += 5000; r = d.update(cx);
+}
+console.log("evening:", r.line.kind, r.line.text);
 d.choose(r.line, "report"); console.log("runs:", JSON.stringify(S.runs));
+if (JSON.stringify(S.runs.at(-1)) !== '["overlay","report"]') throw new Error("日报没打开");

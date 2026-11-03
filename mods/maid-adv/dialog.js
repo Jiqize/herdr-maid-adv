@@ -143,6 +143,7 @@ export function dialog(view, t, cx) {
       .child(menuItem("m-title", "TITLE", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 540, frame: "none", props: { part: "title" } })))
       .child(menuItem("m-cg", "CG", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 600, props: { part: "gallery" } })))
       .child(menuItem("m-log", "LOG", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 560, height: 600, props: { part: "log" } })))
+      .child(menuItem("m-tomato", "🍅", (shared("adv.tomato") ?? 0) > Date.now(), (_e, cx) => { if (!demo) { view.director.tomato(); cx.notify(); } }))
       .child(menuItem("m-smart", "SMART", smart, () => setShared("adv.smart", !smart)))
       .child(menuItem("m-auto", "AUTO", auto, () => setShared("adv.auto", !auto)))
       .child(menuItem("m-skip", "SKIP", false, (_e, cx) => { if (!demo) { view.director.skip(); cx.notify(); } }))

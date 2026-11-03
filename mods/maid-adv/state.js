@@ -106,13 +106,34 @@ export function pushLog(line) {
 export const readLog = () => shared(LOG) ?? [];
 
 // ---------- 营业日报 ----------
-// shared("adv.daily")：当天的统计，跨天自动重置
+// shared("adv.daily")：当天的统计，跨天自动重置；旧的一天归档进 shared("adv.history")（最近 14 天）
 const DAILY = "adv.daily";
+const HISTORY = "adv.history";
+export const dayKey = (t = Date.now()) => new Date(t).toDateString();
 export function daily() {
-  const day = new Date().toDateString();
+  const day = dayKey();
   const s = shared(DAILY);
   if (s && s.day === day) return s;
+  if (s && !history().some((h) => h.day === s.day)) {
+    const { day: d, done, blocked, by, longest } = s;
+    setShared(HISTORY, [...history(), { day: d, done, blocked, by, longest }].slice(-14));
+  }
   return { day, done: 0, blocked: 0, waitSum: 0, waitN: 0, longest: null, by: {}, replies: 0, love: 0 };
+}
+export const history = () => shared(HISTORY) ?? [];
+// 某一天的日报（今天取当天统计，以前的取归档）
+export function dayStats(t) {
+  const day = dayKey(t);
+  if (day === dayKey()) return daily();
+  daily();
+  return history().find((h) => h.day === day) ?? null;
+}
+// 本周一 0 点
+export function weekStart(t = Date.now()) {
+  const d = new Date(t);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime();
 }
 export function record(fn) {
   const s = JSON.parse(JSON.stringify(daily()));

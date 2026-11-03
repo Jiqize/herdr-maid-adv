@@ -170,3 +170,29 @@ export function reportComment(avgMin, served) {
   if (avgMin < 6) return "今天辛苦了。大家都被照顾得很好。";
   return "今天有好几位女仆等了很久……明天也请多看看她们哦。";
 }
+
+// 作息关怀（女仆长和当班女仆）
+export const CARE = {
+  rest: "主人，您已经连续忙了一个半小时了。要不要喝杯红茶，休息 5 分钟？",
+  restOk: "好的，我去给您泡茶。5 分钟后来叫您。",
+  restNo: "好的。不过请不要太勉强自己哦。",
+  breakEnd: "休息时间到了，主人。精神好些了吗？",
+  breakOk: "那么，继续加油吧。",
+  tomatoStart: "番茄钟开始了。25 分钟后来叫您，请专心工作吧。",
+  tomatoCancel: "番茄钟取消了。",
+  tomato: "主人，番茄钟到啦！这 25 分钟辛苦了，起来伸个懒腰吧～",
+  tomatoOk: "嗯！休息一下再继续吧。",
+  tomatoAgain: "好，下一个番茄钟开始了！",
+  offwork: "主人，已经过了晚上 7 点了。今天就到这里吧？",
+  offOk: "今天也辛苦了，主人。路上小心。",
+  offNo: "那我陪您再忙一会儿。不要太晚哦。",
+  week: "主人，这一周辛苦了。要一起看看「本周回忆」吗？",
+  weekOk: "请过目。",
+  weekNo: "好的，那下次再看吧。",
+  // 晨间问候：昨天的日报
+  morning: (y, name, min) => {
+    if (!y || !(y.done + y.blocked)) return null;
+    const head = `早上好，主人。昨天大家一共完成了 ${y.done} 件工作`;
+    return name ? `${head}。昨天让${name}等了最久，${min} 分钟哦。今天也请多关照。` : `${head}。今天也请多关照。`;
+  },
+};
