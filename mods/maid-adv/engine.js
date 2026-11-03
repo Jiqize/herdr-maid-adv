@@ -1,23 +1,27 @@
 // 对话导演：把 Agent 的状态变化变成排队的台词，同一时间只让一位女仆说话
 //   事件：greet 开店问候（女仆长）/ intro 新 Agent 自我介绍 / done 做好了 / blocked 请问 / angry 等太久
-//   系统事件（不属于某个 Agent）：report 日报 / rest 建议休息 / breakEnd 休息结束 / tomato 番茄钟到 / offwork 下班 / week 本周回忆
+//   系统事件（不属于某个 Agent）：report 日报 / rest 建议休息 / breakEnd 休息结束 / tomato 番茄钟到 / offwork 下班 / week 本周回忆 / anniv 营业纪念日
+//   同屏插话：排队的那位偶尔插一句（shared("adv.banter")，舞台左下角显示），不打断正在说话的人
 //   优先级：angry = blocked > done > intro > greet；同级按发生时间
 //   没有事件时说「现状」：当前窗格的女仆在忙就说她自己，否则女仆长汇报
 //   所有时间变化用一次性 cx.timer.after 唤醒
 import { agents, spaces, panes, run, hc, shared, setShared, openOverlay } from "herdr";
-import { PERSONA, RIN, CARE, pick, fill } from "./lines.js";
-import { assign, maidOf, rin, addLove, where, HOT, record, dayKey, dayStats, weekStart } from "./state.js";
+import { PERSONA, RIN, CARE, BIRTHDAY, ANNIV, BANTER, pick, fill } from "./lines.js";
+import { assign, maidOf, rin, addLove, where, HOT, record, dayKey, dayStats, weekStart, businessDay, birthdayMaid } from "./state.js";
 import { Care, TOMATO_MS } from "./care.js";
 import { readScreen, parseOptions, summarize } from "./smart.js";
 
 const MIN = 60000;
 const ANGRY_AFTER = 5 * MIN;
 const REPLY_MS = 2600;
-const RANK = { angry: 0, blocked: 0, done: 1, tomato: 1, intro: 2, report: 3, greet: 3, rest: 3, breakEnd: 3, offwork: 3, week: 3 };
+const RANK = { angry: 0, blocked: 0, done: 1, tomato: 1, intro: 2, report: 3, greet: 3, rest: 3, breakEnd: 3, offwork: 3, week: 3, anniv: 3 };
 const REPORT_HOUR = 18;
 const OFF_HOUR = 19;
 // 系统事件：不跟着 Agent 结算，只有主人回应了才离开队列
-const SYSTEM = new Set(["greet", "report", "rest", "breakEnd", "tomato", "offwork", "week"]);
+const SYSTEM = new Set(["greet", "report", "rest", "breakEnd", "tomato", "offwork", "week", "anniv"]);
+const BANTER_GAP = 10 * MIN;
+const BANTER_MS = 4500;
+const BANTER_AFTER = 3000;
 const MOOD = { report: "happy", greet: "normal", intro: "happy", done: "happy", blocked: "ask", angry: "pout" };
 const CHOICES = {
   greet: [["我回来了", "home"]],
@@ -27,6 +31,7 @@ const CHOICES = {
   tomato: [["好", "ok"], ["再来一个", "again"]],
   offwork: [["这就下班", "ok"], ["再忙一会儿", "dismiss"]],
   week: [["看看本周回忆", "week"], ["下次吧", "dismiss"]],
+  anniv: [["今后也请多关照", "ok"]],
   intro: [["请多关照", "hello"]],
   done: [["马上去看", "go"], ["待会儿", "later"], ["辛苦了", "thanks"]],
   blocked: [["这就来", "go"], ["再等一下", "wait"]],
@@ -41,6 +46,7 @@ const SYS_REPLY = {
   "tomato:ok": CARE.tomatoOk, "tomato:again": CARE.tomatoAgain,
   "offwork:ok": CARE.offOk, "offwork:dismiss": CARE.offNo,
   "week:week": CARE.weekOk, "week:dismiss": CARE.weekNo,
+  "anniv:ok": "是。今后也请多关照，主人。",
 };
 
 export class Director {
@@ -54,6 +60,10 @@ export class Director {
     this.seq = 0;
     this.care = null;
     this.lastFocus = null;
+    this.banter = null;
+    this.lastBanter = -Infinity;
+    this.lineKey = null;
+    this.lineSince = 0;
   }
 
   wake(cx, at, now) {
@@ -125,7 +135,16 @@ export class Director {
         const l = y?.longest;
         text = CARE.morning(y, l ? maidOf(l.maid).name : null, l ? Math.max(1, Math.round(l.ms / MIN)) : 0);
       }
-      this.queue.push({ kind: "greet", address: "rin", maid: rin().id, at: now, key: "greet", text });
+      // 生日：今天由她来做开店问候
+      const bday = birthdayMaid(BIRTHDAY, now);
+      if (bday) this.queue.push({ kind: "greet", address: "rin", maid: bday, at: now, key: "greet", text: BIRTHDAY[bday].line, bday: true });
+      else this.queue.push({ kind: "greet", address: "rin", maid: rin().id, at: now, key: "greet", text });
+      // 营业第 7 / 30 / 100 天：女仆长的纪念台词（各一次）
+      const n = businessDay(now);
+      if (ANNIV[n] && shared("adv.anniv") !== n) {
+        setShared("adv.anniv", n);
+        this.sys("anniv", rin().id, now, { n });
+      }
       // 启动时已经做好 / 在等的，直接排进队列
       for (const a of list) if (HOT(a.status) && !a.focused) this.push({ kind: a.status, address: a.address, pane: a.pane, maid: mids.get(a.address), at: now }, cx);
     } else {
@@ -222,13 +241,31 @@ export class Director {
         line = this.ambient(list, mids, now);
       }
     }
+    if (line) this.chime(cx, line, now);
     const waiting = this.queue.filter((e) => e.key !== this.curKey);
-    return { line, queue: waiting, mids, levelUp };
+    return { line, queue: waiting, mids, levelUp, banter: this.banter };
   }
 
-  sys(kind, maid, now) {
+  sys(kind, maid, now, extra = {}) {
     this.queue = this.queue.filter((e) => e.kind !== kind);
-    this.queue.push({ kind, address: `sys:${kind}`, maid, at: now, key: `${kind}:${++this.seq}` });
+    this.queue.push({ kind, address: `sys:${kind}`, maid, at: now, key: `${kind}:${++this.seq}`, ...extra });
+  }
+
+  // 同屏插话：没有急事、队列里还有别的女仆在等，排在最后那位插一句（10 分钟最多一次）
+  chime(cx, line, now) {
+    if (this.banter && this.banter.until <= now) { this.banter = null; setShared("adv.banter", null); }
+    if (line.id !== this.lineKey) { this.lineKey = line.id; this.lineSince = now; }
+    if (this.banter || now - this.lastBanter < BANTER_GAP) return;
+    if (line.kind === "blocked" || line.kind === "angry" || line.kind === "reply") return;
+    if (this.queue.some((e) => e.kind === "blocked" || e.kind === "angry")) return;
+    const other = this.queue.filter((e) => e.key !== this.curKey && !SYSTEM.has(e.kind) && e.maid !== line.maid && BANTER[e.maid]).at(-1);
+    if (!other) return;
+    if (now - this.lineSince < BANTER_AFTER) { this.wake(cx, this.lineSince + BANTER_AFTER, now); return; }
+    const text = fill(pick(BANTER[other.maid], other.key), { who: maidOf(line.maid).name });
+    this.banter = { maid: other.maid, text, until: now + BANTER_MS, id: `b${++this.seq}` };
+    this.lastBanter = now;
+    setShared("adv.banter", this.banter);
+    this.wake(cx, this.banter.until, now);
   }
 
   // 当班女仆：主人正看着的那位，否则第一位，没人就女仆长
@@ -259,10 +296,12 @@ export class Director {
       return { id: ev.key, maid: ev.maid, mood: "happy", text: "主人，今天的营业日报已经整理好了。要过目吗？", choices, address: null, kind: ev.kind };
     }
     if (ev.kind === "greet") {
-      return { id: ev.key, maid: ev.maid, mood: "normal", text: ev.text ?? pick(RIN.greet, new Date(now).toDateString()), choices, address: null, kind: ev.kind };
+      if (ev.bday) choices = [{ label: "生日快乐！", act: "bday" }];
+      return { id: ev.key, maid: ev.maid, mood: ev.bday ? "happy" : "normal", text: ev.text ?? pick(RIN.greet, new Date(now).toDateString()), choices, address: null, kind: ev.kind };
     }
     if (SYSTEM.has(ev.kind)) {
-      return { id: ev.key, maid: ev.maid, mood: ev.kind === "tomato" || ev.kind === "week" ? "happy" : "normal", text: CARE[ev.kind], choices, address: null, kind: ev.kind };
+      const text = ev.kind === "anniv" ? ANNIV[ev.n] : CARE[ev.kind];
+      return { id: ev.key, maid: ev.maid, mood: ev.kind === "tomato" || ev.kind === "week" ? "happy" : "normal", text, choices, address: null, kind: ev.kind };
     }
     const p = PERSONA[ev.maid] ?? PERSONA.ichigo;
     const vars = { where: a ? where(a) : "", prog: a?.program?.name ?? a?.app ?? "Agent", min: Math.max(1, Math.floor((now - ev.at) / MIN)) };
@@ -314,6 +353,12 @@ export class Director {
       if (act === "break") this.care.takeBreak(now);
       if (act === "again") setShared("adv.tomato", now + TOMATO_MS);
       this.say(line.maid, sysReply, "normal", now);
+      return;
+    }
+    if (act === "bday") {
+      const up = addLove(ev.maid, 2);
+      const reply = BIRTHDAY[ev.maid]?.thanks ?? "谢谢主人！";
+      this.say(line.maid, up ? `${reply}（好感度提升：${up}）` : reply, "happy", now);
       return;
     }
     if (act === "home") {

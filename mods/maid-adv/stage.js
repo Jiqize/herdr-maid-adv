@@ -88,6 +88,24 @@ export function stage(view, t, cx) {
       .when(Boolean(talkEl), (el) => el.child(talkEl))
       .when(Boolean(fxEl), (el) => el.child(fxEl)));
 
+  // 同屏插话：左下角冒出她的小立绘和一句话，到点自动收起
+  const bt = demo?.banter ?? shared("adv.banter");
+  let banterEl = null;
+  if (bt && (demo || bt.until > Date.now())) {
+    const bm = maidOf(bt.maid);
+    const bh = 210, bw = Math.round(bm.size[0] * bh / bm.size[1]);
+    if (!demo && st.banT !== bt.id) {
+      st.banT = bt.id;
+      cx.timer.after(bt.until - Date.now() + 30, (cx) => cx.notify());
+    }
+    banterEl = div().id(`banter-${bt.id}`).absolute().left(-14).bottom(-36).w(STAGE_W).h(bh + 70)
+      .child(div().absolute().left(0).bottom(0).w(bw).h(bh).child(image(asset(bm.tachie.happy ?? bm.tachie.normal)).w(bw).h(bh)))
+      .child(div().absolute().left(bw - 34).top(0).max_w(STAGE_W - bw + 10).px(10).py(6).rounded(12)
+        .bg(night ? "#2e2236ee" : "#ffffffee").border(2).border_color(bm.color)
+        .text_size(12).line_height("18px").text_color(t.foreground)
+        .child(div().text_size(11).font_weight(700).text_color(bm.color).child(bm.name)).child(bt.text));
+  }
+
   // 当班一排
   const list = demo?.crew ?? agents();
   const mids = demo ? null : assign(list);
@@ -111,6 +129,7 @@ export function stage(view, t, cx) {
     // 底部渐暗，让立绘和对话框接得自然
     .child(div().absolute().left(0).right(0).bottom(0).h(140).bg(night ? "#150f1966" : "#ffffff40"))
     .child(portrait)
+    .when(Boolean(banterEl), (el) => el.child(banterEl))
     .child(v_flex().absolute().left(10).right(10).top(10).gap(4)
       .child(h_flex().gap(6).items_center()
         .child(div().px(6).py(1).rounded(6).bg(night ? "#00000080" : "#ffffffcc").text_size(11).text_color(t.muted)

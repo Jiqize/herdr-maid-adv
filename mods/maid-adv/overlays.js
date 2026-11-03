@@ -5,7 +5,7 @@ import { spaces, agents, run, props, closeOverlay, openOverlay } from "herdr";
 import M from "./manifest.js";
 import { CG_LINES, CG_LEVEL, LOVE_TITLES, reportComment } from "./lines.js";
 import { STORIES, StoryPlayer, STORY_LEVEL } from "./story.js";
-import { asset, assign, maidOf, readLog, STATUS_COLOR, STATUS_TEXT, crew, rin, cgUnlocked, loveOf, loveTitle, daily, dayStats, weekStart, storyState, markStory } from "./state.js";
+import { asset, assign, maidOf, readLog, STATUS_COLOR, STATUS_TEXT, crew, rin, cgUnlocked, loveOf, loveTitle, daily, dayStats, weekStart, storyState, markStory, businessDay } from "./state.js";
 
 const close = () => { const id = props()?.overlay; if (id) closeOverlay(id); };
 
@@ -60,6 +60,9 @@ export function log(view, t) {
 
 const open = (part, w, h, extra = {}, frame) => openOverlay({ mod: "maid-adv", kind: "dialog", width: w, height: h, ...(frame ? { frame } : {}), props: { part, ...extra } });
 
+// 「11 月 3 日 星期二」（运行环境的 toLocaleDateString 不认 zh-CN 选项，手动拼）
+const cnDate = (d) => `${d.getMonth() + 1} 月 ${d.getDate()} 日 星期${"日一二三四五六"[d.getDay()]}`;
+
 // 标题画面：主视觉 + 标题字 + 菜单
 export function title(view, t) {
   const item = (id, label, action) => h_flex().id(id).h(38).pl(14).pr(22).gap(10).items_center().rounded(19).cursor_pointer()
@@ -82,7 +85,7 @@ export function title(view, t) {
       .child(item("t-cg", "CG 鉴赏", () => { close(); open("gallery", 960, 600); }))
       .child(item("t-report", "营业日报", () => { close(); open("report", 520, 560); }))
       .child(item("t-cfg", "设置", () => { close(); run("app.settings"); })))
-    .child(div().absolute().left(44).bottom(28).px(10).py(2).rounded(10).bg("#d23a6acc").text_size(12).text_color("#ffffff").child(new Date().toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "long" }) + " · 今日营业中"));
+    .child(div().absolute().left(44).bottom(28).px(10).py(2).rounded(10).bg("#d23a6acc").text_size(12).text_color("#ffffff").child(`${cnDate(new Date())} · 营业第 ${props()?.demo?.day ?? businessDay()} 天`));
 }
 
 // CG 大图：解锁时有横幅；点哪里都关闭

@@ -154,3 +154,22 @@ export function markStory(mid, patch) {
   const all = storyState();
   setShared("adv.story", { ...all, [mid]: { ...(all[mid] ?? {}), ...patch } });
 }
+
+// ---------- 营业天数 ----------
+// shared("adv.firstDay")：第一次开店那天 0 点；营业第 N 天按日历天数算
+export function businessDay(t = Date.now()) {
+  let first = shared("adv.firstDay");
+  if (!first) {
+    const d = new Date(t); d.setHours(0, 0, 0, 0);
+    first = d.getTime();
+    setShared("adv.firstDay", first);
+  }
+  const d = new Date(t); d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - first) / 86400000) + 1;
+}
+
+// 今天过生日的女仆（没有返回 null）
+export function birthdayMaid(bdays, t = Date.now()) {
+  const d = new Date(t);
+  return Object.entries(bdays).find(([, b]) => b.date[0] === d.getMonth() + 1 && b.date[1] === d.getDate())?.[0] ?? null;
+}
