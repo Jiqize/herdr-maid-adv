@@ -1,0 +1,26 @@
+import { S } from "./herdr-mock.js";
+import { Director } from "./engine.js";
+let clock = 1_000_000; Date.now = () => clock;
+const cx = { timer: { after() {} } };
+const d = new Director();
+const ag = (address, status, focused = false) => ({ address, status, focused, pane: "p" + address, space: "s1", space_name: "api", tab: "t1", tab_name: "1", program: { name: "Claude Code" } });
+S.agents = [ag("a", "working"), ag("b", "idle")];
+let r = d.update(cx); console.log("1 greet:", r.line.kind, r.line.maid, r.line.text);
+d.choose(r.line, "home"); r = d.update(cx); console.log("2 reply:", r.line.kind, r.line.text);
+clock += 3000; r = d.update(cx); console.log("3 ambient:", r.line.kind, r.line.text);
+S.agents = [ag("a", "blocked"), ag("b", "done"), ag("c", "idle")];
+r = d.update(cx); console.log("4 first:", r.line.kind, r.line.maid, r.line.text, "| queue", r.queue.map(e => e.kind + ":" + e.address));
+clock += 6 * 60000; r = d.update(cx); console.log("5 angry:", r.line.kind, r.line.mood, r.line.text);
+S.agents = [ag("a", "blocked", true), ag("b", "done"), ag("c", "idle")];
+r = d.update(cx); console.log("6 came:", r.line.kind, r.line.text, "love", JSON.stringify(S.shared["adv.love"]));
+clock += 3000; S.agents = [ag("a", "working"), ag("b", "done"), ag("c", "idle")];
+r = d.update(cx); console.log("7 next:", r.line.kind, r.line.maid, r.line.text);
+d.choose(r.line, "later"); r = d.update(cx); console.log("8 later reply:", r.line.text);
+clock += 3000; r = d.update(cx); console.log("9 after snooze:", r.line.kind, r.line.maid, r.line.text);
+d.choose(r.line, "hello"); clock += 3000; r = d.update(cx); console.log("10:", r.line.kind, r.line.text, "| queue", r.queue.length);
+clock += 6 * 60000; r = d.update(cx); console.log("11 snooze over:", r.line.kind, r.line.text);
+d.choose(r.line, "go"); console.log("12 runs:", JSON.stringify(S.runs));
+// 5 agents in one space → still one speaker
+S.agents = ["v","w","x","y","z"].map(k => ag(k, "idle")); clock += 1000; d.update(cx);
+S.agents = ["v","w","x","y","z"].map(k => ag(k, "done")); clock += 1000; r = d.update(cx);
+console.log("13 crowd: speaker", r.line.maid, "queue", r.queue.length);

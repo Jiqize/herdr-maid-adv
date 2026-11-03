@@ -93,8 +93,8 @@ def main():
         entry = {"id": mid, "name": name, "color": color, "narrator": mid == "rin", "tachie": {}, "size": list(size)}
         os.makedirs(os.path.join(OUT, "maids", mid), exist_ok=True)
         for mood, p in zip(MOODS, cropped):
-            p.resize(size, Image.LANCZOS).save(os.path.join(OUT, "maids", mid, f"{mood}.png"), optimize=True)
-            entry["tachie"][mood] = f"maids/{mid}/{mood}.png"
+            p.resize(size, Image.LANCZOS).save(os.path.join(OUT, "maids", mid, f"{mood}.webp"), quality=90, method=6)
+            entry["tachie"][mood] = f"maids/{mid}/{mood}.webp"
         # 头像：普通差分的脸，正方形，边长约为身高的 26%
         normal = cropped[0]
         cx, cy = face_center(normal)
@@ -102,8 +102,8 @@ def main():
         face = normal.crop((round(cx - side / 2), round(cy - side * 0.55), round(cx + side / 2), round(cy + side * 0.45)))
         for mood, p in zip(MOODS, cropped):
             p.crop((round(cx - side / 2), round(cy - side * 0.55), round(cx + side / 2), round(cy + side * 0.45))) \
-             .resize((128, 128), Image.LANCZOS).save(os.path.join(OUT, "maids", mid, f"head-{mood}.png"), optimize=True)
-        entry["head"] = {m: f"maids/{mid}/head-{m}.png" for m in MOODS}
+             .resize((128, 128), Image.LANCZOS).save(os.path.join(OUT, "maids", mid, f"head-{mood}.webp"), quality=92, method=6)
+        entry["head"] = {m: f"maids/{mid}/head-{m}.webp" for m in MOODS}
         # 脸在立绘里的相对位置（放表情符号用）
         entry["face"] = [round(cx / normal.width, 3), round(cy / normal.height, 3)]
         maids.append(entry)
@@ -111,6 +111,28 @@ def main():
     for b in ("bg-day", "bg-night"):
         Image.open(os.path.join(ART, "ai", b, f"{b}.png")).convert("RGB").resize((768, 1152), Image.LANCZOS) \
             .save(os.path.join(OUT, f"{b}.jpg"), quality=86)
+    # CG：大图 960×540（2 倍 1920 宽太大，取 1536 源图原样缩到 1440）、缩略图、未解锁剪影
+    cg = {}
+    os.makedirs(os.path.join(OUT, "cg"), exist_ok=True)
+    for mid, _, _ in CAST:
+        src = os.path.join(ART, "ai", f"cg-{mid}", f"cg-{mid}.png")
+        if not os.path.exists(src):
+            continue
+        im = Image.open(src).convert("RGB")
+        im = im.resize((1440, round(1440 * im.height / im.width)), Image.LANCZOS)
+        im = im.crop((0, (im.height - 810) // 2, 1440, (im.height - 810) // 2 + 810)) if im.height > 810 else im.resize((1440, 810))
+        im.save(os.path.join(OUT, "cg", f"{mid}.jpg"), quality=88)
+        th = im.resize((428, 240), Image.LANCZOS)
+        th.save(os.path.join(OUT, "cg", f"{mid}-thumb.jpg"), quality=86)
+        lk = th.filter(ImageFilter.GaussianBlur(10)).point(lambda v: int(v * 0.45))
+        lk.save(os.path.join(OUT, "cg", f"{mid}-locked.jpg"), quality=80)
+        cg[mid] = {"full": f"cg/{mid}.jpg", "thumb": f"cg/{mid}-thumb.jpg", "locked": f"cg/{mid}-locked.jpg"}
+    kv = os.path.join(ART, "ai", "keyvisual", "keyvisual.png")
+    if os.path.exists(kv):
+        im = Image.open(kv).convert("RGB")
+        im = im.resize((1920, round(1920 * im.height / im.width)), Image.LANCZOS)
+        top = max(0, (im.height - 1080) // 2)
+        im.crop((0, top, 1920, top + 1080)).save(os.path.join(OUT, "keyvisual.jpg"), quality=86)
     fx = fx_images()
     os.makedirs(os.path.join(OUT, "fx"), exist_ok=True)
     for n, im in fx.items():
@@ -119,6 +141,8 @@ def main():
         "maids": maids,
         "bg": {"day": "bg-day.jpg", "night": "bg-night.jpg", "size": [768, 1152]},
         "fx": {n: f"fx/{n}.png" for n in fx},
+        "cg": cg,
+        "keyvisual": "keyvisual.jpg",
         "fxSize": {n: [im.width // 2, im.height // 2] for n, im in fx.items()},
     }
     with open(os.path.join(ROOT, "mods", "maid-adv", "manifest.js"), "w") as f:
@@ -128,9 +152,9 @@ def main():
     c = Image.new("RGBA", (9 * 4 * 90, 2 * 180 + 10), (60, 40, 60, 255))
     for i, m in enumerate(maids):
         for j, mood in enumerate(MOODS):
-            t = Image.open(os.path.join(OUT, m["tachie"][mood])); t.thumbnail((90, 180))
+            t = Image.open(os.path.join(OUT, m["tachie"][mood])).convert("RGBA"); t.thumbnail((90, 180))
             c.alpha_composite(t, ((i * 4 + j) * 90, 0))
-            h = Image.open(os.path.join(OUT, m["head"][mood])).resize((80, 80))
+            h = Image.open(os.path.join(OUT, m["head"][mood])).convert("RGBA").resize((80, 80))
             c.alpha_composite(h, ((i * 4 + j) * 90 + 5, 190))
     c.save(os.path.join(ART, "samples", "check.png"))
 

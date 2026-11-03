@@ -1,0 +1,18 @@
+Create exactly ONE finished landscape 16:9 visual novel TITLE SCREEN key visual, ideally 1536 x 864 pixels. Composite and re-illustrate the NINE distinct original characters from the supplied reference contact sheet into ONE harmonious cafe scene. The contact sheet is identity and costume reference, NOT a layout reference. Ignore its labels and green backgrounds. Include each character ONCE only, for exactly NINE people total, all nine distinct faces clearly visible.
+
+Scene: a pastel pink maid cafe interior with warm lamps, delicate flowers, and an elegant cake display shelf. Warm, inviting, wholesome, cute, polished modern Japanese galgame key art. Beautiful clean anime linework, luminous eyes, soft refined cel shading, coherent warm interior light. Fully clothed and faithful costumes.
+
+Composition: landscape ensemble portrait with the head maid CENTER BACK, slightly taller, and the eight other maids grouped naturally around her in a balanced two-row overlapping ensemble. Use waist-up and three-quarter framing so all nine faces remain distinguishable. Reserve the upper-left THIRD as calm, uncluttered pale pastel wall and light atmosphere for a future title logo: no faces, hair, busy shelf or ornate decorations in that reserved area. Place the ensemble across the lower band and center/right, without cropping heads. Separate faces and natural hands. Friendly welcoming expressions.
+
+Reference contact sheet is a 3 by 3 grid, left to right, top to bottom:
+1 top left RIN, head maid: wine-red hair in a low braided bun, amber eyes, white lace maid cap, LONG-SLEEVED LONG NAVY Victorian maid dress, white bib and apron, navy neck bow with oval brooch, keys and pocket watch at waist. CENTER BACK, poised and gently smiling.
+2 top middle ICHIGO: pink long curly twin tails and magenta eyes, red/pink hair bows, black short puff-sleeve maid dress, white apron with pink heart pocket emblem, pink neck bow.
+3 top right YORU: very long straight near-black purple hair, hime-cut bangs, purple eyes and lavender bows, black maid dress, white apron with crescent moon emblem.
+4 middle left PURIN: golden blonde side ponytail with large yellow bow, amber eyes, black maid dress, white apron with pudding emblem, yellow neck bow.
+5 middle middle YUKIMI: silver-white bob, pale blue eyes, pale blue hair and neck bows, BLUE-GRAY maid dress, white apron with blue snowflake emblem.
+6 middle right KOKO: chestnut brown thick side braid, ROUND GLASSES, brown eyes, cream bows, COCOA BROWN maid dress, cream apron with panda emblem. Preserve her glasses.
+7 bottom left SODA: sky-blue short tousled hair, bright blue eyes, dark blue head and neck bows, small YELLOW STAR hair clip, black maid dress, white apron with blue bubble-heart emblem.
+8 bottom middle BUDOU: long wavy purple hair with TWO ODANGO BUNS, purple eyes, pale MINT bows, distinctly BURGUNDY maid dress, white apron with grape emblem.
+9 bottom right MIKAN: orange bob, orange CAT EARS and orange CAT TAIL, amber eyes, black hair bows, black collar with large GOLD BELL, black maid dress, white apron with orange paw emblem. Cat ears belong ONLY to her.
+
+Exactly nine people: wine red bun, pink twin tails, black hime, blonde side ponytail, silver bob, brown braid and glasses, blue short hair and star, purple odango buns, orange cat girl. All stand together in the SAME cafe scene. No duplication, no missing character, no panels, no reference-sheet layout, no isolated cutouts, no green screen. No text, no logo, no watermark, no UI. Generate exactly ONE image.

@@ -1,0 +1,4 @@
+Generate exactly ONE image with your image generation tool, then save it as a PNG file at this absolute path: art/ai/cg-yukimi/cg-yukimi.png
+
+Image: a polished anime visual-novel EVENT CG illustration, landscape 16:9 (ideally 1536 x 864), in a cozy pastel maid cafe. The attached sheet shows the character's exact design (hair, eyes, ribbons, dress colors, apron pocket motif, accessories); draw this SAME original character faithfully (ignore the green background and the four poses). Scene: in warm afternoon sunlight she has dozed off at a cafe table, cheek on folded arms, a latte with snowflake latte art beside her, a tiny snow globe, peaceful.
+Style: high-quality modern Japanese galgame CG, soft warm lighting, depth of field, clean lineart, gentle cel shading, wholesome and cute, fully clothed and modest. No text, no logos, no UI, no watermark.

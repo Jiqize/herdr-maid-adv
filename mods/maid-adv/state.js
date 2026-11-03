@@ -85,3 +85,24 @@ export function pushLog(line) {
   setShared(LOG, log);
 }
 export const readLog = () => shared(LOG) ?? [];
+
+// ---------- 营业日报 ----------
+// shared("adv.daily")：当天的统计，跨天自动重置
+const DAILY = "adv.daily";
+export function daily() {
+  const day = new Date().toDateString();
+  const s = shared(DAILY);
+  if (s && s.day === day) return s;
+  return { day, done: 0, blocked: 0, waitSum: 0, waitN: 0, longest: null, by: {}, replies: 0, love: 0 };
+}
+export function record(fn) {
+  const s = JSON.parse(JSON.stringify(daily()));
+  fn(s);
+  setShared(DAILY, s);
+}
+
+// ---------- CG ----------
+export const cgUnlocked = () => shared("adv.cg") ?? {};
+export function unlockCg(mid) {
+  setShared("adv.cg", { ...cgUnlocked(), [mid]: Date.now() });
+}

@@ -1,11 +1,11 @@
 // 对话框：名牌 + 好感度、打字机逐字显示、选项按钮、排队头像、LOG / AUTO / SKIP / 设置
 //   对话框这一份持有导演（engine.js），并把「谁在说话」写进 shared("adv.speaker") 给舞台和窗格头读
 import { div, image, svg } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { h_flex, v_flex, Input } from "gpui-base";
 import { shared, setShared, props, run, openOverlay } from "herdr";
 import M from "./manifest.js";
-import { asset, isNight, maidOf, loveOf, loveLevel, loveTitle, pushLog } from "./state.js";
-import { PERSONA } from "./lines.js";
+import { asset, isNight, maidOf, loveOf, loveLevel, loveTitle, pushLog, cgUnlocked, unlockCg, crew } from "./state.js";
+import { PERSONA, CG_LEVEL } from "./lines.js";
 
 const STEP_MS = 32;
 const AUTO_MS = 6000;
@@ -51,6 +51,17 @@ export function dialog(view, t, cx) {
   }
   const m = maidOf(line.maid);
   const tw = typing(view, line, cx);
+  // 好感度到「常客」→ 解锁她的 CG（一次一位）
+  if (!demo) {
+    const got = cgUnlocked();
+    const fresh = crew().find((c) => !got[c.id] && loveLevel(loveOf(c.id)) >= CG_LEVEL);
+    if (fresh) {
+      unlockCg(fresh.id);
+      openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 600, frame: "none", props: { part: "cgview", maid: fresh.id, unlock: true } });
+    }
+  }
+  const canReply = !demo && Boolean(line.pane) && ["done", "blocked", "angry"].includes(line.kind);
+  view.replyLine = canReply ? line : null;
   const auto = Boolean(shared("adv.auto"));
   if (!demo && auto && tw.done && queue.length && view.autoFor !== line.id) {
     view.autoFor = line.id;
@@ -78,6 +89,14 @@ export function dialog(view, t, cx) {
     .when(tw.done, (el) => el.child(div().id("adv-next").absolute().right(8).bottom(6).text_size(12).text_color(m.color)
       .loop("opacity", { from: 0.2, to: 1, period: 700 }).child("▼")));
 
+  const replyRow = canReply || demo?.reply
+    ? h_flex().id("adv-reply").mx(24).mb(10).h(32).px(12).gap(8).items_center().rounded(16)
+      .bg(night ? "#150f19" : "#ffffff").border(1).border_color(`${m.color}99`)
+      .on_mouse_down("left", stop).on_click(stop)
+      .child(div().flex_none().text_size(12).text_color(m.color).child(`回复${m.name}`))
+      .child(demo ? div().flex_1().text_size(13).text_color(t.dim).child(demo.reply) : Input.new(view.input).flex_1().h_full().text_size(13).text_color(t.foreground))
+    : null;
+
   const choices = v_flex().w(200).flex_none().pt(16).pr(16).gap(6).items_end()
     .when(tw.done, (el) => el.children(line.choices.map(choice)));
 
@@ -85,7 +104,8 @@ export function dialog(view, t, cx) {
     .bg(night ? "#221a28e8" : "#fffafbee").border(2).border_color(m.color)
     .cursor_pointer()
     .on_click((_e, cx) => { tw.finish(); cx.notify(); })
-    .child(h_flex().flex_1().min_h(0).items_start().child(text).child(choices));
+    .child(h_flex().flex_1().min_h(0).items_start().child(v_flex().flex_1().min_w(0).h_full().justify_between().child(text)
+      .when(Boolean(replyRow), (el) => el.child(replyRow))).child(choices));
 
   // 排队头像：点谁谁先说
   const qhead = (ev) => {
@@ -108,6 +128,8 @@ export function dialog(view, t, cx) {
       .children(queue.slice(0, 12).map(qhead))
       .when(queue.length > 12, (el) => el.child(div().text_size(11).text_color(t.dim).child(`+${queue.length - 12}`))))
     .child(h_flex().gap(2).items_center()
+      .child(menuItem("m-title", "TITLE", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 540, frame: "none", props: { part: "title" } })))
+      .child(menuItem("m-cg", "CG", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 600, props: { part: "gallery" } })))
       .child(menuItem("m-log", "LOG", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 560, height: 600, props: { part: "log" } })))
       .child(menuItem("m-auto", "AUTO", auto, () => setShared("adv.auto", !auto)))
       .child(menuItem("m-skip", "SKIP", false, (_e, cx) => { if (!demo) { view.director.skip(); cx.notify(); } }))

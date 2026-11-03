@@ -3,17 +3,19 @@
 //   优先级：angry = blocked > done > intro > greet；同级按发生时间
 //   没有事件时说「现状」：当前窗格的女仆在忙就说她自己，否则女仆长汇报
 //   所有时间变化用一次性 cx.timer.after 唤醒
-import { agents, spaces, run } from "herdr";
+import { agents, spaces, panes, run, hc, shared, setShared, openOverlay } from "herdr";
 import { PERSONA, RIN, pick, fill } from "./lines.js";
-import { assign, maidOf, rin, addLove, where, HOT } from "./state.js";
+import { assign, maidOf, rin, addLove, where, HOT, record } from "./state.js";
 
 const MIN = 60000;
 const ANGRY_AFTER = 5 * MIN;
 const REPLY_MS = 2600;
-const RANK = { angry: 0, blocked: 0, done: 1, intro: 2, greet: 3 };
-const MOOD = { greet: "normal", intro: "happy", done: "happy", blocked: "ask", angry: "pout" };
+const RANK = { angry: 0, blocked: 0, done: 1, intro: 2, report: 3, greet: 3 };
+const REPORT_HOUR = 18;
+const MOOD = { report: "happy", greet: "normal", intro: "happy", done: "happy", blocked: "ask", angry: "pout" };
 const CHOICES = {
   greet: [["我回来了", "home"]],
+  report: [["看看日报", "report"], ["明天再说", "dismiss"]],
   intro: [["请多关照", "hello"]],
   done: [["马上去看", "go"], ["待会儿", "later"], ["辛苦了", "thanks"]],
   blocked: [["这就来", "go"], ["再等一下", "wait"]],
@@ -38,6 +40,9 @@ export class Director {
   }
 
   push(ev) {
+    if (ev.kind === "done" || ev.kind === "blocked") {
+      record((d) => { d[ev.kind] += 1; if (ev.kind === "done") d.by[ev.maid] = (d.by[ev.maid] ?? 0) + 1; });
+    }
     // 同一个 Agent 只留最新的一件事
     this.queue = this.queue.filter((e) => !(e.address === ev.address && e.kind !== "greet"));
     this.queue.push({ ...ev, key: `${ev.kind}:${ev.address}:${++this.seq}` });
@@ -53,6 +58,13 @@ export class Director {
     let d = 0;
     if (ev.kind === "blocked" || ev.kind === "angry") d = wait < MIN ? 2 : wait < 5 * MIN ? 1 : wait >= 15 * MIN ? -1 : 0;
     if (ev.kind === "done") d = wait < 3 * MIN ? 1 : 0;
+    if (ev.kind !== "intro") {
+      record((s) => {
+        s.waitSum += wait; s.waitN += 1;
+        if (!s.longest || wait > s.longest.ms) s.longest = { maid: ev.maid, ms: wait };
+        if (d > 0) s.love += d;
+      });
+    }
     return addLove(ev.maid, d);
   }
 
@@ -121,12 +133,17 @@ export class Director {
       this.reply = null;
       const ready = this.queue.filter((e) => !(e.snooze > now));
       let ev = ready.find((e) => e.key === this.curKey);
-      if (!ev) {
-        ev = [...ready].sort((x, y) => RANK[x.kind] - RANK[y.kind] || x.at - y.at)[0];
-      }
+      const best = [...ready].sort((x, y) => RANK[x.kind] - RANK[y.kind] || x.at - y.at)[0];
+      // 问候 / 介绍 / 日报这类不急的台词，会被更急的事打断
+      if (!ev || (RANK[ev.kind] >= 2 && RANK[best.kind] < RANK[ev.kind])) ev = best;
       if (ev) {
         this.curKey = ev.key;
         line = this.lineFor(ev, live.get(ev.address), now);
+      } else if (new Date(now).getHours() >= REPORT_HOUR && shared("adv.reportDay") !== new Date(now).toDateString()) {
+        setShared("adv.reportDay", new Date(now).toDateString());
+        this.queue.push({ kind: "report", address: "rin", maid: rin().id, at: now, key: `report:${now}` });
+        this.curKey = null;
+        line = this.ambient(list, mids, now);
       } else {
         this.curKey = null;
         line = this.ambient(list, mids, now);
@@ -138,6 +155,9 @@ export class Director {
 
   lineFor(ev, a, now) {
     const choices = CHOICES[ev.kind].map(([label, act]) => ({ label, act }));
+    if (ev.kind === "report") {
+      return { id: ev.key, maid: ev.maid, mood: "happy", text: "主人，今天的营业日报已经整理好了。要过目吗？", choices, address: null, kind: ev.kind };
+    }
     if (ev.kind === "greet") {
       return { id: ev.key, maid: ev.maid, mood: "normal", text: pick(RIN.greet, new Date(now).toDateString()), choices, address: null, kind: ev.kind };
     }
@@ -181,6 +201,11 @@ export class Director {
     }
     this.queue = this.queue.filter((e) => e !== ev);
     this.curKey = null;
+    if (act === "report" || act === "dismiss") {
+      if (act === "report") openOverlay({ mod: "maid-adv", kind: "dialog", width: 520, height: 560, props: { part: "report" } });
+      this.say(line.maid, act === "report" ? "请过目。" : "好的，那明天再说吧。", "normal", now);
+      return;
+    }
     if (act === "home") {
       const list = agents();
       const st = { total: list.length, working: 0, blocked: 0, done: 0 };
@@ -191,6 +216,29 @@ export class Director {
     const up = addLove(ev.maid, 1);
     const reply = pick(p?.thanks, ev.key);
     this.say(line.maid, up ? `${reply}（好感度提升：${up}）` : reply, "happy", now);
+  }
+
+  // 在对话框里直接回复她：把文字发给她的终端；算作回应（好感 / 等待时间照算）
+  async answer(line, text) {
+    const now = Date.now();
+    const ev = this.queue.find((e) => e.key === line.id);
+    const term = panes().find((p) => p.pane === line.pane)?.terminal;
+    if (!ev || !term || !text.trim()) return false;
+    const args = ["send"];
+    if (ev.kind === "blocked" || ev.kind === "angry") args.push("--force");
+    args.push(term, text);
+    const r = await hc(args);
+    if (r.code !== 0) {
+      this.say(line.maid, `呜……没能送到（${(r.stderr || r.stdout).trim().slice(0, 40)}）`, "ask", Date.now());
+      return false;
+    }
+    this.queue = this.queue.filter((e) => e !== ev);
+    this.curKey = null;
+    const up = this.love(ev, now);
+    record((s) => { s.replies += 1; });
+    const p = PERSONA[line.maid];
+    this.say(line.maid, up ? `${pick(p?.got, ev.key)}（好感度提升：${up}）` : pick(p?.got, ev.key), "happy", Date.now());
+    return true;
   }
 
   // 排队头像被点：让她先说

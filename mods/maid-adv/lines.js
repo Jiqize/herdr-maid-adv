@@ -5,6 +5,7 @@
 
 export const PERSONA = {
   ichigo: {
+    got: ["收到收到！莓莓这就去办～"],
     title: "元气担当",
     intro: ["初次见面！我是莓莓，{where} 这桌就交给我啦～请多指教，主人！"],
     done: ["主人主人！{where} 的 {prog} 做好啦！快来尝尝嘛～", "叮咚～{where} 这边完成了哦！莓莓可是用了满满的爱心！"],
@@ -18,6 +19,7 @@ export const PERSONA = {
     idle: ["莓莓随时待命哦，主人想点什么？"],
   },
   yoru: {
+    got: ["明白了。我会照主人说的去做。"],
     title: "冷静敬语",
     intro: ["初次见面，主人。我是小夜，从今天起负责 {where}。请多关照。"],
     done: ["主人，{where} 的工作已经准备妥当了。请您过目。", "{prog} 那边已经完成了。……要现在去看看吗？"],
@@ -31,6 +33,7 @@ export const PERSONA = {
     idle: ["主人有什么吩咐，请随时告诉小夜。"],
   },
   purin: {
+    got: ["了解！布丁冲啦～"],
     title: "活力满满",
     intro: ["哈喽哈喽！我是布丁！{where} 这桌我包了，冲呀～！"],
     done: ["耶！{where} 搞定啦！主人快来看看布丁的成果～", "完成完成！{prog} 那边一次就过了哦！厉害吧？"],
@@ -44,6 +47,7 @@ export const PERSONA = {
     idle: ["主人主人，有什么好玩的活儿吗？"],
   },
   yukimi: {
+    got: ["嗯……知道了……雪见去做……"],
     title: "慵懒天然",
     intro: ["呼啊……我是雪见……{where} 这里，雪见会好好看着的……大概。"],
     done: ["主人……{where} 好了哦……雪见可以睡一会儿了吗……", "嗯……{prog} 做完了……快去看看吧……"],
@@ -57,6 +61,7 @@ export const PERSONA = {
     idle: ["……zzz……啊，主人有事吗……"],
   },
   koko: {
+    got: ["好、好的！可可会努力的……"],
     title: "害羞眼镜",
     intro: ["那、那个……我是可可。{where} 这里……我会努力的……请多指教……"],
     done: ["主、主人……{where} 的……做好了……不嫌弃的话请看看……", "那个……{prog} 那边完成了……应该……没有问题……"],
@@ -70,6 +75,7 @@ export const PERSONA = {
     idle: ["……主人有需要的话……叫可可就好……"],
   },
   soda: {
+    got: ["包在我身上！"],
     title: "爽朗假小子",
     intro: ["嘿！我是汽水！{where} 交给我准没错，主人放心吧！"],
     done: ["搞定！{where} 一口气做完啦，主人来验收！", "砰——！{prog} 收工！主人看看怎么样？"],
@@ -83,6 +89,7 @@ export const PERSONA = {
     idle: ["主人，有活儿尽管丢给我！"],
   },
   budou: {
+    got: ["哼，早这么说不就好了。本小姐这就去。"],
     title: "傲娇大小姐",
     intro: ["哼，本小姐葡萄，今天起勉为其难负责 {where}。你可要感激哦。"],
     done: ["{where} 的事本小姐已经完美完成了。还不快来夸奖我？", "哼，{prog} 那种程度，本小姐当然是轻松搞定。……你、你倒是来看看啊。"],
@@ -96,6 +103,7 @@ export const PERSONA = {
     idle: ["有事就快说，本小姐很忙的。"],
   },
   mikan: {
+    got: ["收到喵！橘子出发喵～"],
     title: "猫系女仆",
     intro: ["喵～我是橘子喵！{where} 是橘子的地盘了喵，请多关照～"],
     done: ["主人喵～{where} 做好了喵！快来摸摸橘子的头～", "喵呜！{prog} 完成了喵，橘子很棒吧？"],
@@ -140,4 +148,25 @@ export function pick(list, key) {
 
 export function fill(text, vars) {
   return text.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? ""));
+}
+
+// CG：好感度达到「常客」时解锁，每位一张专属 CG 和一句话
+export const CG_LEVEL = 2;
+export const CG_LINES = {
+  ichigo: ["主人，看好了哦——萌萌 kyun♡ 这个爱心，只画给主人一个人！"],
+  yoru: ["今晚的月色很美呢……这杯红茶，请慢慢品尝。"],
+  purin: ["当当当——！布丁特制豪华布丁塔！哇哇要倒了，主人快扶一下！"],
+  yukimi: ["……zzz……主人……再五分钟……"],
+  koko: ["这、这是可可第一次做熊猫松饼……请、请主人尝尝……"],
+  soda: ["看好了主人——砰！这一杯，是专门为你调的！"],
+  budou: ["这份芭菲……才不是特意为你做的！只是……做多了而已！"],
+  mikan: ["呼噜……主人的手好暖和喵……再摸一下嘛……"],
+};
+
+// 营业日报：女仆长按平均响应时间给一句评语
+export function reportComment(avgMin, served) {
+  if (!served) return "今天店里很安静呢。主人也好好休息吧。";
+  if (avgMin < 2) return "主人今天反应超快，大家都很开心。我也为您骄傲。";
+  if (avgMin < 6) return "今天辛苦了。大家都被照顾得很好。";
+  return "今天有好几位女仆等了很久……明天也请多看看她们哦。";
 }
