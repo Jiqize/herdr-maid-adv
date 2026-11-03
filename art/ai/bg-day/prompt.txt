@@ -1,0 +1,3 @@
+Generate exactly ONE image with your image generation tool, then save it as a PNG file at this absolute path: art/ai/bg-day/bg-day.png
+
+Image: a polished anime visual-novel BACKGROUND painting, vertical composition, canvas 1024 x 1536 (2:3). The inside of a cute maid cafe in the afternoon: pastel pink striped wallpaper, white wainscoting, arched window with lace curtains and soft sunlight, small round tables with white lace tablecloths, a cake display shelf, hanging lamps, heart-shaped decorations. The lower 45% of the picture is calm and low-detail (floor, table edge, soft blur) because a character will stand in front of it. Soft depth of field, warm cozy pastel palette. No people, no characters, no text, no signs with letters, no watermark.

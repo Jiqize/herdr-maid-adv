@@ -1,0 +1,6 @@
+PROJECT.md
+docs/
+art/samples/
+.DS_Store
+__pycache__/
+art/ai/*/codex.log

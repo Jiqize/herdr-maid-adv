@@ -1,0 +1,16 @@
+Generate exactly ONE image with your image generation tool, then save it as a PNG file at this absolute path: art/ai/soda/soda-sheet.png
+
+Image: an anime visual-novel (galgame) character sprite sheet with expression variants (tachie / 立绘差分) of ONE ORIGINAL cafe maid girl, not any existing anime or game character. Sky-blue short messy tomboy hair with a star hairclip, cyan eyes, black maid dress, white apron with a light-blue bubble pocket, sporty tomboy personality.
+
+The attached pixel-art sheet shows this SAME character's design: copy her hair color and hairstyle, eye color, ribbons, dress colors, apron pocket motif and accessories faithfully, but redraw her as a high-quality modern anime illustration (NOT pixel art).
+
+Style: polished modern Japanese visual-novel character art, clean confident lineart, soft cel shading with gentle gradients, glossy detailed eyes, pastel palette, slim normal (non-chibi) proportions, about 17-20 years old, cute and wholesome, fully clothed, modest.
+
+Layout: canvas 2048 x 1024 (2:1). ONE horizontal row of exactly FOUR equal panels (each 512 x 1024), the SAME girl in every panel, same size, same framing: HALF-BODY from the top of the head (with headdress fully visible, small margin above) down to mid-thigh, centered, body facing the viewer at a slight 3/4 angle. Panels are NOT separated by lines; just leave clear background between figures. Every figure must fit fully inside its panel (hair and hands must not cross into the next panel).
+Panels LEFT TO RIGHT:
+1 normal: gentle polite smile, hands folded in front of the apron.
+2 happy: eyes closed in a bright smile, blushing, both hands forming a heart shape in front of the chest.
+3 asking / worried: slightly worried eyebrows, head tilted, holding a small order notepad and pen near the chest, a small sweat drop.
+4 pouting: cheeks puffed, slightly angry eyebrows, arms crossed, looking a little away.
+
+Background: a perfectly flat solid pure green (#00FF00) chroma-key background everywhere, no gradient, no shadow, no floor, no scenery. Do not use any green color on the character herself. No text, no labels, no borders, no watermark.

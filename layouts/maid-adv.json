@@ -1,0 +1,150 @@
+{
+  "id": "root",
+  "type": "column",
+  "titlebar": "none",
+  "traffic_lights": [
+    16,
+    24
+  ],
+  "theme": {
+    "light": "maid-adv",
+    "dark": "maid-adv-night"
+  },
+  "background": "canvas",
+  "ui_font": "PingFang SC",
+  "terminal_padding": [
+    12,
+    10
+  ],
+  "preview": "layouts/maid-adv.svg",
+  "divider": {
+    "width": 0,
+    "color": "canvas"
+  },
+  "children": [
+    {
+      "id": "top",
+      "type": "block",
+      "size": {
+        "px": 48
+      },
+      "window_drag": true,
+      "content": {
+        "mod": "maid-adv",
+        "props": {
+          "part": "top"
+        }
+      }
+    },
+    {
+      "id": "body",
+      "type": "row",
+      "padding": [
+        4,
+        12
+      ],
+      "gap": 10,
+      "children": [
+        {
+          "id": "main",
+          "type": "block",
+          "content": {
+            "tab": "active",
+            "pane": {
+              "gap": 8,
+              "radius": 10,
+              "background": "background",
+              "lone": true,
+              "border": {
+                "width": 1,
+                "color": "border"
+              },
+              "focus": {
+                "width": 2,
+                "color": "input"
+              },
+              "header": {
+                "content": {
+                  "mod": "maid-adv"
+                },
+                "height": 30,
+                "position": "top",
+                "reveal": "always"
+              }
+            }
+          }
+        },
+        {
+          "id": "panel",
+          "type": "column",
+          "hidden": true,
+          "size": {
+            "px": 360
+          },
+          "min": 280,
+          "max": 900,
+          "radius": 10,
+          "border": {
+            "width": 1,
+            "color": "border"
+          },
+          "children": [
+            {
+              "id": "panel-body",
+              "type": "stack",
+              "active": "files",
+              "children": [
+                {
+                  "id": "files",
+                  "type": "block",
+                  "content": {
+                    "mod": "files"
+                  }
+                },
+                {
+                  "id": "changes",
+                  "type": "block",
+                  "content": {
+                    "mod": "changes"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "stage",
+          "type": "block",
+          "size": {
+            "px": 360
+          },
+          "resizable": false,
+          "radius": 12,
+          "border": {
+            "width": 1,
+            "color": "border"
+          },
+          "content": {
+            "mod": "maid-adv",
+            "props": {
+              "part": "stage"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "dialog",
+      "type": "block",
+      "size": {
+        "px": 178
+      },
+      "content": {
+        "mod": "maid-adv",
+        "props": {
+          "part": "dialog"
+        }
+      }
+    }
+  ]
+}
