@@ -2,6 +2,7 @@
 # 用法：python3 -I art/build.py（需要 Pillow 和 numpy）
 #   立绘：绿幕动作表 → 抠图去绿边 → 切成 4 张差分 → 按 4 张的并集对齐裁切（换表情不跳位）
 #   头像：从「普通」差分里按皮肤重心裁脸；背景：转 JPEG；表情符号：程序绘制
+#   v3：闭眼 / 张嘴差分 → 和原图对比找出变化区域，只切这一小块（边缘羽化）叠在立绘上；季节服装 sheet 按同样流程切图
 import json, os, shutil, sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -11,6 +12,9 @@ ROOT = os.path.dirname(ART)
 OUT = os.path.join(ROOT, "mods", "maid-adv", "assets")
 MOODS = ("normal", "happy", "ask", "pout")
 TACHIE_H = 1000
+PATCHES = ("blink", "talk")
+# 季节服装：名字 → 动作表路径模板（日期在 mod 里的 OUTFITS 表登记）
+OUTFITS = {"xmas": "xmas-{mid}/xmas-{mid}-sheet.png"}
 
 CAST = [
     ("ichigo", "莓莓", "#ef6f8e"), ("yoru", "小夜", "#8a7ad6"), ("purin", "布丁", "#e0a62e"),
@@ -50,6 +54,77 @@ def face_center(img):
         return (x0 + x1) / 2, y0 + (y1 - y0) * 0.16
     return x0 + float(np.median(xs)), y0 + float(np.median(ys))
 
+def cut_sheet(path):
+    """动作表 → 4 张抠好的差分，按并集裁切；返回 (panels, union, scale, size)"""
+    sheet = Image.open(path)
+    pw = sheet.width / 4
+    panels = [key_green(sheet.crop((round(i * pw), 0, round((i + 1) * pw), sheet.height))) for i in range(4)]
+    boxes = [bbox(p) for p in panels]
+    u = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+    cropped = [p.crop(u) for p in panels]
+    k = TACHIE_H / cropped[0].height
+    return cropped, u, k, (round(cropped[0].width * k), TACHIE_H)
+
+def save_set(cropped, size, folder, prefix, q=90):
+    """存 4 张立绘 + 4 张头像，返回 manifest 片段"""
+    os.makedirs(os.path.join(OUT, folder), exist_ok=True)
+    tachie, head = {}, {}
+    normal = cropped[0]
+    cx, cy = face_center(normal)
+    side = normal.height * 0.26
+    box = (round(cx - side / 2), round(cy - side * 0.55), round(cx + side / 2), round(cy + side * 0.45))
+    for mood, p in zip(MOODS, cropped):
+        p.resize(size, Image.LANCZOS).save(os.path.join(OUT, folder, f"{prefix}{mood}.webp"), quality=q, method=6)
+        tachie[mood] = f"{folder}/{prefix}{mood}.webp"
+        p.crop(box).resize((128, 128), Image.LANCZOS).save(os.path.join(OUT, folder, f"{prefix}head-{mood}.webp"), quality=92, method=6)
+        head[mood] = f"{folder}/{prefix}head-{mood}.webp"
+    return {"tachie": tachie, "head": head, "size": list(size), "face": [round(cx / normal.width, 3), round(cy / normal.height, 3)]}
+
+def find_shift(base, img, r=3):
+    """在 ±r 像素里找让两张图最接近的平移（生图偶尔会挪一点）"""
+    a = np.asarray(base.convert("RGB")).astype(np.int16)
+    b = np.asarray(img.convert("RGB")).astype(np.int16)
+    best = (1e9, 0, 0)
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            v = (np.abs(np.roll(np.roll(b, dy, 0), dx, 1) - a).max(2) > 25).mean()
+            if v < best[0]:
+                best = (v, dx, dy)
+    return best[1], best[2]
+
+def make_patch(mid, kind, u, size):
+    """闭眼 / 张嘴差分：对齐 → 换算到立绘尺寸 → 找变化区域 → 切小块并羽化边缘"""
+    src = os.path.join(ART, "ai", f"{mid}-{kind}", f"{mid}-{kind}.png")
+    if not os.path.exists(src):
+        return None
+    base = Image.open(os.path.join(ART, "ai", mid, f"{mid}-normal.png"))
+    img = Image.open(src).convert("RGB").resize(base.size, Image.LANCZOS)
+    dx, dy = find_shift(base, img)
+    if dx or dy:
+        img = Image.fromarray(np.roll(np.roll(np.asarray(img), dy, 0), dx, 1))
+    # 和立绘完全同一套变换：抠图 → 并集裁切 → 缩放
+    a = key_green(base).crop(u).resize(size, Image.LANCZOS)
+    b = key_green(img).crop(u).resize(size, Image.LANCZOS)
+    d = np.abs(np.asarray(a).astype(np.int16) - np.asarray(b).astype(np.int16))[..., :3].max(2)
+    m = Image.fromarray(((d > 40) * 255).astype(np.uint8)).filter(ImageFilter.MinFilter(3))
+    ys, xs = np.where(np.asarray(m)[: size[1] // 2] > 0)
+    if len(xs) < 10:
+        return None
+    pad = 10
+    x0, y0 = max(0, xs.min() - pad), max(0, ys.min() - pad)
+    x1, y1 = min(size[0], xs.max() + pad + 1), min(size[1] // 2, ys.max() + pad + 1)
+    piece = b.crop((x0, y0, x1, y1))
+    # 羽化：离边 6px 内 alpha 线性变淡，和底图无缝衔接
+    w, h = piece.size
+    f = 6
+    ramp = np.minimum.outer(np.minimum(np.arange(h), np.arange(h)[::-1]), np.minimum(np.arange(w), np.arange(w)[::-1]))
+    fe = np.clip((ramp + 1) / f, 0, 1)
+    al = (np.asarray(piece.getchannel("A")).astype(float) * fe).astype(np.uint8)
+    piece.putalpha(Image.fromarray(al))
+    name = f"maids/{mid}/{kind}.webp"
+    piece.save(os.path.join(OUT, name), lossless=True, method=6)
+    return {"x": int(x0), "y": int(y0), "w": int(w), "h": int(h), "img": name, "shift": [dx, dy]}
+
 def fx_images():
     out = {}
     # 爱心
@@ -82,32 +157,24 @@ def main():
     os.makedirs(OUT)
     maids = []
     for mid, name, color in CAST:
-        sheet = Image.open(os.path.join(ART, "ai", mid, f"{mid}-sheet.png"))
-        pw = sheet.width / 4
-        panels = [key_green(sheet.crop((round(i * pw), 0, round((i + 1) * pw), sheet.height))) for i in range(4)]
-        boxes = [bbox(p) for p in panels]
-        u = (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
-        cropped = [p.crop(u) for p in panels]
-        k = TACHIE_H / cropped[0].height
-        size = (round(cropped[0].width * k), TACHIE_H)
-        entry = {"id": mid, "name": name, "color": color, "narrator": mid == "rin", "tachie": {}, "size": list(size)}
-        os.makedirs(os.path.join(OUT, "maids", mid), exist_ok=True)
-        for mood, p in zip(MOODS, cropped):
-            p.resize(size, Image.LANCZOS).save(os.path.join(OUT, "maids", mid, f"{mood}.webp"), quality=90, method=6)
-            entry["tachie"][mood] = f"maids/{mid}/{mood}.webp"
-        # 头像：普通差分的脸，正方形，边长约为身高的 26%
-        normal = cropped[0]
-        cx, cy = face_center(normal)
-        side = normal.height * 0.26
-        face = normal.crop((round(cx - side / 2), round(cy - side * 0.55), round(cx + side / 2), round(cy + side * 0.45)))
-        for mood, p in zip(MOODS, cropped):
-            p.crop((round(cx - side / 2), round(cy - side * 0.55), round(cx + side / 2), round(cy + side * 0.45))) \
-             .resize((128, 128), Image.LANCZOS).save(os.path.join(OUT, "maids", mid, f"head-{mood}.webp"), quality=92, method=6)
-        entry["head"] = {m: f"maids/{mid}/head-{m}.webp" for m in MOODS}
-        # 脸在立绘里的相对位置（放表情符号用）
-        entry["face"] = [round(cx / normal.width, 3), round(cy / normal.height, 3)]
+        cropped, u, _k, size = cut_sheet(os.path.join(ART, "ai", mid, f"{mid}-sheet.png"))
+        # 头像：普通差分的脸，正方形，边长约为身高的 26%；face 是脸在立绘里的相对位置（放表情符号用）
+        entry = {"id": mid, "name": name, "color": color, "narrator": mid == "rin", **save_set(cropped, size, f"maids/{mid}", "")}
+        # 闭眼 / 张嘴小块（只用于「普通」表情）
+        entry["patch"] = {}
+        for kind in PATCHES:
+            pt = make_patch(mid, kind, u, size)
+            if pt:
+                entry["patch"][kind] = pt
+        # 季节服装
+        entry["outfits"] = {}
+        for oid, tpl in OUTFITS.items():
+            path = os.path.join(ART, "ai", tpl.format(mid=mid))
+            if os.path.exists(path):
+                oc, _, _, osize = cut_sheet(path)
+                entry["outfits"][oid] = save_set(oc, osize, f"maids/{mid}", f"{oid}-", q=80)  # 一年只穿几天，压狠一点
         maids.append(entry)
-        print(mid, size)
+        print(mid, size, {k: (v["x"], v["y"], v["w"], v["h"], v["shift"]) for k, v in entry["patch"].items()}, list(entry["outfits"]))
     for b in ("bg-day", "bg-night"):
         Image.open(os.path.join(ART, "ai", b, f"{b}.png")).convert("RGB").resize((768, 1152), Image.LANCZOS) \
             .save(os.path.join(OUT, f"{b}.jpg"), quality=86)
@@ -157,6 +224,33 @@ def main():
             h = Image.open(os.path.join(OUT, m["head"][mood])).convert("RGBA").resize((80, 80))
             c.alpha_composite(h, ((i * 4 + j) * 90 + 5, 190))
     c.save(os.path.join(ART, "samples", "check.png"))
+    # 差分检查图：每位一行 = 普通脸 / 叠闭眼 / 叠张嘴 / 圣诞普通 / 圣诞 4 表情
+    rows = []
+    for m in maids:
+        base = Image.open(os.path.join(OUT, m["tachie"]["normal"])).convert("RGBA")
+        W = base.width
+        box = (int(W * 0.15), 60, int(W * 0.9), 60 + int(W * 0.6))
+        tiles = [base]
+        for kind in PATCHES:
+            pt = m["patch"].get(kind)
+            t = base.copy()
+            if pt:
+                t.alpha_composite(Image.open(os.path.join(OUT, pt["img"])).convert("RGBA"), (pt["x"], pt["y"]))
+            tiles.append(t)
+        tiles = [t.crop(box).resize((220, round(220 * (box[3] - box[1]) / (box[2] - box[0])))) for t in tiles]
+        xm = m["outfits"].get("xmas")
+        if xm:
+            for mood in MOODS:
+                t = Image.open(os.path.join(OUT, xm["tachie"][mood])).convert("RGBA"); t.thumbnail((220, tiles[0].height))
+                tiles.append(t)
+        rows.append(tiles)
+    th = rows[0][0].height
+    c = Image.new("RGBA", (220 * 7 + 60, th * len(rows)), (60, 40, 60, 255))
+    for i, tiles in enumerate(rows):
+        x = 0
+        for j, t in enumerate(tiles):
+            c.alpha_composite(t, (x, i * th)); x += 220 + (60 if j == 2 else 0) if j < 3 else t.width
+    c.save(os.path.join(ART, "samples", "patch-check.png"))
 
 if __name__ == "__main__":
     main()
