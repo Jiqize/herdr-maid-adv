@@ -4,7 +4,8 @@ import { h_flex, v_flex } from "gpui-base";
 import { spaces, agents, run, props, closeOverlay, openOverlay } from "herdr";
 import M from "./manifest.js";
 import { CG_LINES, CG_LEVEL, LOVE_TITLES, reportComment } from "./lines.js";
-import { asset, assign, maidOf, readLog, STATUS_COLOR, STATUS_TEXT, crew, rin, cgUnlocked, loveOf, loveTitle, daily, dayStats, weekStart } from "./state.js";
+import { STORIES, StoryPlayer, STORY_LEVEL } from "./story.js";
+import { asset, assign, maidOf, readLog, STATUS_COLOR, STATUS_TEXT, crew, rin, cgUnlocked, loveOf, loveTitle, daily, dayStats, weekStart, storyState, markStory } from "./state.js";
 
 const close = () => { const id = props()?.overlay; if (id) closeOverlay(id); };
 
@@ -116,7 +117,19 @@ export function gallery(view, t, cx) {
           .text_size(22).font_weight(800).text_color("#ffffffcc").child("？？？"))))
       .child(h_flex().justify_between().items_center()
         .child(div().text_size(12).font_weight(700).text_color(m.color).child(m.name))
-        .child(div().text_size(11).text_color(t.dim).child(ok ? "已解锁" : `${loveTitle(pts)} ${pts}/${CG_LEVEL * 5}`)));
+        .child(div().text_size(11).text_color(t.dim).child(ok ? "已解锁" : `${loveTitle(pts)} ${pts}/${CG_LEVEL * 5}`)))
+      .child(storyRow(m, t));
+  };
+  // 个人剧情：解锁后可以重看，显示读到了几个结局
+  const storyRow = (m, t) => {
+    const st = storyState()[m.id];
+    const s = STORIES[m.id];
+    if (!s) return div();
+    if (!st?.unlocked) return div().text_size(11).text_color(t.dim).child(`剧情「？？？」· ${LOVE_TITLES[STORY_LEVEL]}解锁`);
+    const n = (st.good ? 1 : 0) + (st.bad ? 1 : 0);
+    return div().id(`story-${m.id}`).text_size(11).text_color(m.color).cursor_pointer().hover((x) => x.text_color(t.foreground))
+      .on_click(() => open("story", 960, 600, { maid: m.id }, "none"))
+      .child(`▶ 剧情「${s.title}」· 结局 ${n}/2`);
   };
   const n = crew().filter((m) => got[m.id]).length;
   return v_flex().size_full().p(18).gap(12)
@@ -208,4 +221,92 @@ export function week(view, t) {
           ? h_flex().flex_wrap().gap(6).children(cgs.filter((mid) => M.cg[mid]).map((mid) => div().w(96).h(54).rounded(6).overflow_hidden()
             .border(1).border_color(maidOf(mid).color).child(image(asset(M.cg[mid].thumb)).w(96).h(54))))
           : div().text_size(13).text_color(t.dim).child("这周还没有解锁新的 CG"))));
+}
+
+// 剧情浮层：背景 + 她的立绘 + 对话框；点对话框往下走，第 2 幕结尾选一个回答，好结局最后看 CG
+//   demo：props.demo = { at: 第几步, good: true / false }
+export function story(view, t, cx) {
+  const mid = props()?.maid;
+  const s = STORIES[mid];
+  if (!s) return div();
+  const demo = props()?.demo;
+  if (!view.player) {
+    view.player = new StoryPlayer(s);
+    if (demo) { view.player.good = demo.good ?? null; view.player.pos = demo.at ?? 0; }
+  }
+  const p = view.player;
+  const st = p.step();
+  const m = maidOf(mid);
+  const W = 960, H = 600;
+  const go = (_e, cx) => { if (p.next()) cx.notify(); };
+
+  // 读完记一笔（哪个结局读过）
+  if (st.kind === "end" && !demo && view.recorded !== st.good) {
+    view.recorded = st.good;
+    markStory(mid, { unlocked: storyState()[mid]?.unlocked ?? Date.now(), [st.good ? "good" : "bad"]: Date.now() });
+  }
+
+  if (st.kind === "cg") {
+    return div().id("story-cg").w(W).h(H).relative().rounded(16).overflow_hidden().bg("#000000").cursor_pointer().on_click(go)
+      .child(image(asset(M.cg[mid].full)).absolute().left(0).top(0).w(W).h(540))
+      .child(h_flex().absolute().left(0).right(0).bottom(0).h(60).px(20).gap(10).items_center().bg("#1d1622")
+        .child(div().px(10).rounded(10).bg(m.color).text_size(13).font_weight(700).text_color("#ffffff").child(m.name))
+        .child(div().flex_1().text_size(14).text_color("#f3e3ea").child((CG_LINES[mid] ?? [""])[0]))
+        .child(div().text_size(12).text_color("#f3e3ea99").child("▼")));
+  }
+
+  const bgUrl = (st.bg ?? "day") === "night" ? M.bg.night : M.bg.day;
+  const [bw, bh] = M.bg.size;
+  const BH = Math.round(W * bh / bw);
+  const scene = div().absolute().left(0).top(0).w(W).h(H).overflow_hidden()
+    .child(image(asset(bgUrl)).absolute().left(0).top(-Math.round((BH - H) * 0.35)).w(W).h(BH));
+
+  if (st.kind === "end") {
+    const item = (id, label, action) => div().id(id).h(36).px(20).flex().items_center().rounded(18).cursor_pointer()
+      .bg("#ffffffdd").border(2).border_color(m.color).text_size(14).font_weight(700).text_color(m.color)
+      .hover((x) => x.bg(m.color).text_color("#ffffff")).on_click(action).child(label);
+    return div().w(W).h(H).relative().rounded(16).overflow_hidden().bg("#000000")
+      .child(scene)
+      .child(div().absolute().left(0).top(0).w(W).h(H).bg("#1d1622b3"))
+      .child(v_flex().absolute().left(0).top(0).w(W).h(H).gap(14).items_center().justify_center()
+        .child(div().text_size(14).text_color("#f3e3eacc").child(`${m.name}的剧情「${s.title}」`))
+        .child(div().text_size(34).font_weight(800).text_color("#ffffff").child("—— 完 ——"))
+        .child(div().px(14).py(4).rounded(12).bg(st.good ? "#ef4f7ecc" : "#8a7a90cc").text_size(13).text_color("#ffffff")
+          .child(st.good ? "好结局 · 回忆 CG 已收藏" : "普通结局 · 换一个回答试试？"))
+        .child(h_flex().mt(10).gap(12)
+          .child(item("st-again", "再看一次", (_e, cx) => { p.restart(); view.recorded = undefined; cx.notify(); }))
+          .child(item("st-close", "关闭", close))));
+  }
+
+  const narr = st.kind === "line" && st.mood === "-";
+  const mood = st.kind === "line" && !narr && m.tachie[st.mood] ? st.mood : st.kind === "choice" ? "ask" : "normal";
+  const [w0, h0] = m.size;
+  const TH = 560, TW = Math.round(w0 * TH / h0);
+  const choice = (c, i) => div().id(`st-ch-${i}`).h(36).px(18).flex().items_center().rounded(18).cursor_pointer()
+    .bg("#fffafbee").border(2).border_color(m.color).text_size(14).text_color("#4a3040")
+    .hover((x) => x.bg(m.color).text_color("#ffffff"))
+    .on_click((_e, cx) => { if (p.choose(i)) cx.notify(); })
+    .child(`▶ ${c.label}`);
+  // 分支时对话框里留着她刚问的那句
+  const text = st.kind === "choice" ? s.acts[s.acts.length - 1].lines.at(-1).text : st.text;
+
+  return div().w(W).h(H).relative().rounded(16).overflow_hidden().bg("#000000")
+    .child(scene)
+    .child(div().id(`st-tachie-${mood}`).absolute().left(Math.round((W - TW) / 2)).top(40).w(TW).h(TH).opacity(narr ? 0.55 : 1)
+      .child(image(asset(m.tachie[mood])).w(TW).h(TH)))
+    // 左上：第几幕 · 标题
+    .child(div().absolute().left(20).top(16).px(12).py(3).rounded(12).bg("#1d1622b3").text_size(12).text_color("#ffffff")
+      .child(`第 ${Math.min(st.act ?? 3, 3)} 幕 · ${s.title}`))
+    .child(div().id("st-x").absolute().right(18).top(14).px(10).py(3).rounded(12).bg("#1d1622b3").cursor_pointer()
+      .text_size(12).text_color("#ffffffcc").hover((x) => x.text_color("#ffffff")).on_click(close).child("关闭"))
+    .when(st.kind === "choice", (el) => el.child(v_flex().absolute().left(0).right(0).top(190).gap(12).items_center()
+      .children(st.choices.map(choice))))
+    .child(v_flex().id("st-box").absolute().left(24).right(24).bottom(20).h(140).cursor_pointer().on_click(go)
+      .when(!narr, (el) => el.child(h_flex().ml(22).h(26).px(12).items_center().rounded_t(12).bg(m.color).self_start()
+        .text_size(14).font_weight(700).text_color("#ffffff").child(m.name)))
+      .child(div().flex_1().relative().px(24).pt(18).rounded(16).bg("#fffafbee").border(2).border_color(narr ? "#b8a8b0" : m.color)
+        .when(narr, (el) => el.mt(26))
+        .child(div().text_size(17).line_height("30px").text_color(narr ? "#7a6070" : "#3a2632").child(text))
+        .when(st.kind === "line", (el) => el.child(div().id("st-next").absolute().right(16).bottom(10).text_size(12).text_color(m.color)
+          .loop("opacity", { from: 0.2, to: 1, period: 700 }).child("▼")))));
 }

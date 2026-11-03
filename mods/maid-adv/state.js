@@ -146,3 +146,11 @@ export const cgUnlocked = () => shared("adv.cg") ?? {};
 export function unlockCg(mid) {
   setShared("adv.cg", { ...cgUnlocked(), [mid]: Date.now() });
 }
+
+// ---------- 个人剧情 ----------
+// shared("adv.story")：{ 女仆 id: { unlocked: 时间, good: 时间, bad: 时间 } }
+export const storyState = () => shared("adv.story") ?? {};
+export function markStory(mid, patch) {
+  const all = storyState();
+  setShared("adv.story", { ...all, [mid]: { ...(all[mid] ?? {}), ...patch } });
+}

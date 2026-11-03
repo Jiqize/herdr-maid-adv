@@ -4,7 +4,8 @@ import { div, image, svg } from "gpui-kit";
 import { h_flex, v_flex, Input } from "gpui-base";
 import { shared, setShared, props, run, openOverlay } from "herdr";
 import M from "./manifest.js";
-import { asset, isNight, maidOf, loveOf, loveLevel, loveTitle, pushLog, cgUnlocked, unlockCg, crew } from "./state.js";
+import { asset, isNight, maidOf, loveOf, loveLevel, loveTitle, pushLog, cgUnlocked, unlockCg, crew, storyState, markStory } from "./state.js";
+import { STORIES, STORY_LEVEL } from "./story.js";
 import { PERSONA, CG_LEVEL } from "./lines.js";
 
 const STEP_MS = 32;
@@ -60,6 +61,14 @@ export function dialog(view, t, cx) {
     if (fresh) {
       unlockCg(fresh.id);
       openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 600, frame: "none", props: { part: "cgview", maid: fresh.id, unlock: true } });
+    } else {
+      // 好感度到「好朋友」→ 解锁她的个人剧情并开始播放（一次一位）
+      const seen = storyState();
+      const ready = crew().find((c) => STORIES[c.id] && !seen[c.id]?.unlocked && loveLevel(loveOf(c.id)) >= STORY_LEVEL);
+      if (ready) {
+        markStory(ready.id, { unlocked: Date.now() });
+        openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 600, frame: "none", props: { part: "story", maid: ready.id, unlock: true } });
+      }
     }
   }
   // 认出确认框时不给文字回复框，免得文字被当成对确认框的回答

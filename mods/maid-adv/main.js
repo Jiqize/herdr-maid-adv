@@ -8,7 +8,7 @@ import { top } from "./top.js";
 import { stage } from "./stage.js";
 import { dialog } from "./dialog.js";
 import { paneHeader } from "./pane.js";
-import { chapters, log, title, gallery, cgview, report, week } from "./overlays.js";
+import { chapters, log, title, gallery, cgview, report, week, story } from "./overlays.js";
 
 export default class MaidAdv extends View {
   init(_props, cx) {
@@ -60,6 +60,7 @@ export default class MaidAdv extends View {
     if (part === "cgview") return cgview(this, t);
     if (part === "report") return report(this, t);
     if (part === "week") return week(this, t);
+    if (part === "story") return story(this, t, cx);
     return div();
   }
 }
