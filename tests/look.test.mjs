@@ -1,0 +1,23 @@
+// B 季节服装：日期表命中才换装，换装时立绘 / 头像都换、没有眨眼口型差分
+import assert from "node:assert/strict";
+import { S } from "./herdr-mock.js";
+import { outfitOn, maidOf } from "./state.js";
+const d = (s) => new Date(`${s}T12:00:00`);
+assert.equal(outfitOn(d("2026-12-17")), null);
+assert.equal(outfitOn(d("2026-12-18")), "xmas");
+assert.equal(outfitOn(d("2026-12-26")), "xmas");
+assert.equal(outfitOn(d("2026-12-27")), null);
+assert.equal(outfitOn(d("2026-07-01")), null);
+S.props = { demo: { date: "2026-11-03" } };
+let m = maidOf("yoru");
+assert.ok(m.patch.blink && m.patch.talk, "平日有眨眼 / 口型差分");
+assert.ok(!m.tachie.normal.includes("xmas"));
+S.props = { demo: { date: "2026-12-24" } };
+m = maidOf("yoru");
+assert.equal(m.outfit, "xmas");
+assert.ok(m.tachie.normal.includes("xmas-") && m.head.happy.includes("xmas-"));
+assert.deepEqual(m.patch, {});
+console.log("xmas yoru:", m.tachie.normal, m.head.normal, m.size);
+for (const id of ["ichigo", "yoru", "purin", "yukimi", "koko", "soda", "budou", "mikan", "rin"]) assert.equal(maidOf(id).outfit, "xmas", id);
+S.props = null;
+console.log("OK");

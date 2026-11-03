@@ -1,4 +1,4 @@
-export const S = { agents: [], shared: {}, runs: [], hc: [], exec: [], screen: {}, claude: null };
+export const S = { props: null, agents: [], shared: {}, runs: [], hc: [], exec: [], screen: {}, claude: null };
 export const agents = () => S.agents;
 export const panes = () => S.agents.map((a) => ({ pane: a.pane, terminal: "t-" + a.address }));
 export const spaces = () => [{ id: "s1", tabs: [{ id: "t1", working_since: Date.now() - 120000 }] }];
@@ -18,3 +18,4 @@ export const exec = async (cmd, args) => {
   if (S.claude == null) return { code: 1, stdout: "", stderr: "timeout" };
   return { code: 0, stdout: S.claude, stderr: "" };
 };
+export const props = () => S.props;

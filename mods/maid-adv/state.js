@@ -1,5 +1,5 @@
 // 共享的小工具：素材路径、昼夜、女仆分配、好感度
-import { shared, setShared, spaces } from "herdr";
+import { shared, setShared, spaces, props } from "herdr";
 import M from "./manifest.js";
 import { LOVE_TITLES } from "./lines.js";
 
@@ -25,8 +25,27 @@ export function find(node, id) {
   return null;
 }
 
+// 季节服装：到了日期自动换装（立绘、头像一起换；换装期间没有眨眼 / 口型差分）
+//   以后加万圣节、夏日浴衣：在这里加一行，并在 art/build.py 的 OUTFITS 登记动作表
+export const OUTFITS = [
+  { id: "xmas", from: [12, 18], to: [12, 26] },
+];
+// demo props 里的 date（如 "2026-12-24"）只给截图用，假装今天是那天
+export function today() {
+  const d = props()?.demo?.date;
+  return d ? new Date(`${d}T12:00:00`) : new Date();
+}
+export function outfitOn(date = today()) {
+  const md = (date.getMonth() + 1) * 100 + date.getDate();
+  return OUTFITS.find((o) => md >= o.from[0] * 100 + o.from[1] && md <= o.to[0] * 100 + o.to[1])?.id ?? null;
+}
+
 // 女仆：M.maids 里 rin 是女仆长（旁白），不分配给 Agent
-export const maidOf = (id) => M.maids.find((m) => m.id === id) ?? M.maids[0];
+export function maidOf(id) {
+  const m = M.maids.find((x) => x.id === id) ?? M.maids[0];
+  const o = outfitOn();
+  return o && m.outfits?.[o] ? { ...m, ...m.outfits[o], patch: {}, outfit: o } : m;
+}
 export const crew = () => M.maids.filter((m) => !m.narrator);
 export const rin = () => M.maids.find((m) => m.narrator) ?? M.maids[0];
 

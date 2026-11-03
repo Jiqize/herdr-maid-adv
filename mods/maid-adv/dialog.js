@@ -44,13 +44,15 @@ export function dialog(view, t, cx) {
     const r = view.director.update(cx);
     line = r.line;
     queue = r.queue;
-    // 谁在说话 → 舞台和窗格头
-    const sp = { maid: line.maid, mood: line.mood, address: line.address ?? null, pane: line.pane ?? null };
-    const old = shared("adv.speaker");
-    if (!old || old.maid !== sp.maid || old.mood !== sp.mood || old.address !== sp.address || old.pane !== sp.pane) setShared("adv.speaker", sp);
   }
   const m = maidOf(line.maid);
   const tw = typing(view, line, cx);
+  if (!demo) {
+    // 谁在说话、是否还在出字 → 舞台（口型）和窗格头；只在变化时写
+    const sp = { maid: line.maid, mood: line.mood, address: line.address ?? null, pane: line.pane ?? null, talking: !tw.done };
+    const old = shared("adv.speaker");
+    if (!old || ["maid", "mood", "address", "pane", "talking"].some((k) => old[k] !== sp[k])) setShared("adv.speaker", sp);
+  }
   // 好感度到「常客」→ 解锁她的 CG（一次一位）
   if (!demo) {
     const got = cgUnlocked();

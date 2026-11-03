@@ -10,6 +10,26 @@ import { asset, isNight, maidOf, assign, STATUS_COLOR, STATUS_TEXT, where } from
 const STAGE_W = 360;
 const TACHIE_H = 620;
 const FX = { happy: "heart", ask: "sweat", pout: "anger" };
+const MOUTH_MS = 120;
+const BLINK_MS = 140;
+
+// 口型：说话期间每 120ms 开合一次，打完字就闭上；眨眼：每 3～6 秒一次。都是一次性 timer，同时只挂一个
+function animate(st, sp, m, mood, cx) {
+  const canTalk = mood === "normal" && m.patch?.talk;
+  if (sp.talking && canTalk) {
+    if (!st.mouthT) {
+      st.mouthT = true;
+      cx.timer.after(MOUTH_MS, (cx) => { st.mouthT = false; st.mouth = !st.mouth; cx.notify(); });
+    }
+  } else st.mouth = false;
+  if (mood === "normal" && m.patch?.blink && !st.blinkT) {
+    st.blinkT = true;
+    cx.timer.after(3000 + Math.random() * 3000, (cx) => {
+      st.blink = true; cx.notify();
+      cx.timer.after(BLINK_MS, (cx) => { st.blink = false; st.blinkT = false; cx.notify(); });
+    });
+  }
+}
 
 export function stage(view, t, cx) {
   const demo = props()?.demo;
@@ -31,6 +51,17 @@ export function stage(view, t, cx) {
   const [w0, h0] = m.size;
   const TW = Math.round(w0 * TACHIE_H / h0);
   const mood = m.tachie[sp.mood] ? sp.mood : "normal";
+  animate(st, sp, m, mood, cx);
+  // 闭眼 / 张嘴小块一直挂着，只切透明度（不会第一次显示才加载而闪一下）
+  const k = TACHIE_H / h0;
+  const patch = (kind, on) => {
+    const p = m.patch?.[kind];
+    if (!p || mood !== "normal") return null;
+    return div().absolute().left(p.x * k).top(p.y * k).w(p.w * k).h(p.h * k).opacity(on ? 1 : 0)
+      .child(image(asset(p.img)).w(p.w * k).h(p.h * k));
+  };
+  const blinkEl = patch("blink", st.blink);
+  const talkEl = patch("talk", st.mouth);
   const fxName = FX[mood];
   let fxEl = null;
   if (fxName) {
@@ -53,6 +84,8 @@ export function stage(view, t, cx) {
     .child(div().id("adv-breath").absolute().left(0).top(0).w(TW).h(TACHIE_H)
       .loop("top", { from: 0, to: -3, period: 3400 })
       .child(image(asset(m.tachie[mood])).w(TW).h(TACHIE_H))
+      .when(Boolean(blinkEl), (el) => el.child(blinkEl))
+      .when(Boolean(talkEl), (el) => el.child(talkEl))
       .when(Boolean(fxEl), (el) => el.child(fxEl)));
 
   // 当班一排
