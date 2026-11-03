@@ -6,6 +6,7 @@
 import { agents, spaces, panes, run, hc, shared, setShared, openOverlay } from "herdr";
 import { PERSONA, RIN, pick, fill } from "./lines.js";
 import { assign, maidOf, rin, addLove, where, HOT, record } from "./state.js";
+import { readScreen, parseOptions, summarize } from "./smart.js";
 
 const MIN = 60000;
 const ANGRY_AFTER = 5 * MIN;
@@ -39,13 +40,30 @@ export class Director {
     cx.timer.after(Math.max(16, at - now + 30), (cx) => { this.wakeAt = Infinity; cx.notify(); });
   }
 
-  push(ev) {
+  push(ev, cx) {
     if (ev.kind === "done" || ev.kind === "blocked") {
       record((d) => { d[ev.kind] += 1; if (ev.kind === "done") d.by[ev.maid] = (d.by[ev.maid] ?? 0) + 1; });
     }
     // 同一个 Agent 只留最新的一件事
     this.queue = this.queue.filter((e) => !(e.address === ev.address && e.kind !== "greet"));
-    this.queue.push({ ...ev, key: `${ev.kind}:${ev.address}:${++this.seq}` });
+    const e = { ...ev, key: `${ev.kind}:${ev.address}:${++this.seq}` };
+    this.queue.push(e);
+    if (cx && (e.kind === "done" || e.kind === "blocked")) this.enrich(e, cx);
+  }
+
+  // 读懂工作：读一次屏 → blocked 找选项 → 请 claude 概括；结果挂在事件上，只做一次
+  enrich(ev, cx) {
+    if (shared("adv.smart") === false) return;
+    const term = panes().find((p) => p.pane === ev.pane)?.terminal;
+    if (!term) return;
+    cx.timer.after(16, (acx) => acx.spawn(async (acx) => {
+      const text = await readScreen(term);
+      if (!text.trim() || !this.queue.includes(ev)) return;
+      if (ev.kind === "blocked") ev.options = parseOptions(text);
+      acx.notify();
+      const said = await summarize(ev.maid, maidOf(ev.maid).name, ev.kind, text);
+      if (said && this.queue.includes(ev)) { ev.summary = said; acx.notify(); }
+    }));
   }
 
   say(maid, text, mood, now) {
@@ -78,16 +96,16 @@ export class Director {
     if (!this.init) {
       this.queue.push({ kind: "greet", address: "rin", maid: rin().id, at: now, key: "greet" });
       // 启动时已经做好 / 在等的，直接排进队列
-      for (const a of list) if (HOT(a.status) && !a.focused) this.push({ kind: a.status, address: a.address, maid: mids.get(a.address), at: now });
+      for (const a of list) if (HOT(a.status) && !a.focused) this.push({ kind: a.status, address: a.address, pane: a.pane, maid: mids.get(a.address), at: now }, cx);
     } else {
       for (const a of list) {
         const prev = this.last.get(a.address);
         const mid = mids.get(a.address);
         if (prev === undefined) {
-          if (HOT(a.status) && !a.focused) this.push({ kind: a.status, address: a.address, maid: mid, at: now });
+          if (HOT(a.status) && !a.focused) this.push({ kind: a.status, address: a.address, pane: a.pane, maid: mid, at: now }, cx);
           else this.push({ kind: "intro", address: a.address, maid: mid, at: now });
         } else if (prev !== a.status && HOT(a.status) && !a.focused) {
-          this.push({ kind: a.status, address: a.address, maid: mid, at: now });
+          this.push({ kind: a.status, address: a.address, pane: a.pane, maid: mid, at: now }, cx);
         }
       }
     }
@@ -154,7 +172,13 @@ export class Director {
   }
 
   lineFor(ev, a, now) {
-    const choices = CHOICES[ev.kind].map(([label, act]) => ({ label, act }));
+    let choices = CHOICES[ev.kind].map(([label, act]) => ({ label, act }));
+    // 认出了确认框：按钮直接替主人按键（另留一个「这就来」）
+    const opts = (ev.kind === "blocked" || ev.kind === "angry") ? ev.options : null;
+    if (opts) {
+      choices = opts.items.map((it) => ({ label: opts.kind === "menu" ? `选 ${it.key}：${it.label}` : `${it.label}（${it.key}）`, act: `key:${it.key}` }));
+      choices.push({ label: "这就来", act: "go" });
+    }
     if (ev.kind === "report") {
       return { id: ev.key, maid: ev.maid, mood: "happy", text: "主人，今天的营业日报已经整理好了。要过目吗？", choices, address: null, kind: ev.kind };
     }
@@ -163,7 +187,10 @@ export class Director {
     }
     const p = PERSONA[ev.maid] ?? PERSONA.ichigo;
     const vars = { where: a ? where(a) : "", prog: a?.program?.name ?? a?.app ?? "Agent", min: Math.max(1, Math.floor((now - ev.at) / MIN)) };
-    return { id: ev.key, maid: ev.maid, mood: MOOD[ev.kind], text: fill(pick(p[ev.kind], ev.key), vars), choices, address: ev.address, pane: a?.pane, kind: ev.kind };
+    // 概括好了就换成她的汇报（id 变了，打字机会重新打一遍）；生气时还是催
+    const said = ev.kind !== "angry" ? ev.summary : null;
+    const text = said ?? fill(pick(p[ev.kind], ev.key), vars);
+    return { id: said ? `${ev.key}:s` : ev.key, key: ev.key, maid: ev.maid, mood: MOOD[ev.kind], text, choices, options: opts, address: ev.address, pane: a?.pane, kind: ev.kind };
   }
 
   // 没有事件时的「现状」
@@ -186,7 +213,7 @@ export class Director {
   // 主人点了一个选项
   choose(line, act) {
     const now = Date.now();
-    const ev = this.queue.find((e) => e.key === line.id);
+    const ev = this.queue.find((e) => e.key === (line.key ?? line.id));
     const p = PERSONA[line.maid];
     if (act === "go") {
       if (line.pane) run("pane.focus", { pane: line.pane });
@@ -220,14 +247,23 @@ export class Director {
 
   // 在对话框里直接回复她：把文字发给她的终端；算作回应（好感 / 等待时间照算）
   async answer(line, text) {
+    if (!text.trim()) return false;
+    const ev = this.queue.find((e) => e.key === (line.key ?? line.id));
+    const force = ev && (ev.kind === "blocked" || ev.kind === "angry") ? ["--force"] : [];
+    return this.deliver(line, (term) => ["send", ...force, term, text]);
+  }
+
+  // 点了确认框选项：替主人按那个键（hc keys，不用 send --force）
+  press(line, key) {
+    return this.deliver(line, (term) => ["keys", term, key]);
+  }
+
+  async deliver(line, argsFor) {
     const now = Date.now();
-    const ev = this.queue.find((e) => e.key === line.id);
+    const ev = this.queue.find((e) => e.key === (line.key ?? line.id));
     const term = panes().find((p) => p.pane === line.pane)?.terminal;
-    if (!ev || !term || !text.trim()) return false;
-    const args = ["send"];
-    if (ev.kind === "blocked" || ev.kind === "angry") args.push("--force");
-    args.push(term, text);
-    const r = await hc(args);
+    if (!ev || !term) return false;
+    const r = await hc(argsFor(term));
     if (r.code !== 0) {
       this.say(line.maid, `呜……没能送到（${(r.stderr || r.stdout).trim().slice(0, 40)}）`, "ask", Date.now());
       return false;

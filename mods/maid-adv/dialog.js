@@ -60,9 +60,11 @@ export function dialog(view, t, cx) {
       openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 600, frame: "none", props: { part: "cgview", maid: fresh.id, unlock: true } });
     }
   }
-  const canReply = !demo && Boolean(line.pane) && ["done", "blocked", "angry"].includes(line.kind);
+  // 认出确认框时不给文字回复框，免得文字被当成对确认框的回答
+  const canReply = !demo && Boolean(line.pane) && !line.options && ["done", "blocked", "angry"].includes(line.kind);
   view.replyLine = canReply ? line : null;
   const auto = Boolean(shared("adv.auto"));
+  const smart = shared("adv.smart") !== false;
   if (!demo && auto && tw.done && queue.length && view.autoFor !== line.id) {
     view.autoFor = line.id;
     cx.timer.after(AUTO_MS, (cx) => { if (view.tw?.id === line.id) view.director.rotate(); cx.notify(); });
@@ -76,12 +78,17 @@ export function dialog(view, t, cx) {
     .child(div().text_size(11).text_color("#ffffffcc").child(m.narrator ? "女仆长" : `${persona?.title ?? ""} · ${loveTitle(pts)}`))
     .when(!m.narrator, (el) => el.child(hearts(pts, "#ffffff")));
 
-  const choice = (c, i) => div().id(`ch-${i}`).h(30).px(14).flex().items_center().rounded(15).cursor_pointer()
+  const choice = (c, i) => div().id(`ch-${i}`).h(28).px(12).flex().items_center().rounded(14).cursor_pointer()
     .bg(night ? "#2e2236" : "#ffffff").border(2).border_color(m.color)
     .text_size(13).text_color(t.foreground)
     .hover((s) => s.bg(m.color).text_color("#ffffff"))
     .on_mouse_down("left", stop)
-    .on_click((_e, cx) => { if (!demo) { view.director.choose(line, c.act); cx.notify(); } })
+    .on_click((_e, cx) => {
+      if (demo) return;
+      // 确认框选项：替主人按键，按完再刷新
+      if (c.act.startsWith("key:")) cx.spawn(async (cx) => { await view.director.press(line, c.act.slice(4)); cx.notify(); });
+      else { view.director.choose(line, c.act); cx.notify(); }
+    })
     .child(`▶ ${c.label}`);
 
   const text = div().relative().flex_1().min_w(0).pt(20).pl(24).pr(12).pb(8)
@@ -97,7 +104,10 @@ export function dialog(view, t, cx) {
       .child(demo ? div().flex_1().text_size(13).text_color(t.dim).child(demo.reply) : Input.new(view.input).flex_1().h_full().text_size(13).text_color(t.foreground))
     : null;
 
-  const choices = v_flex().w(200).flex_none().pt(16).pr(16).gap(6).items_end()
+  // 超过 3 个选项（认出确认框时）排成两列，免得被对话框裁掉
+  const many = line.choices.length > 3;
+  const choices = (many ? h_flex().w(360).flex_wrap().justify_end().content_start() : v_flex().w(200).items_end())
+    .flex_none().pt(10).pr(16).gap(4)
     .when(tw.done, (el) => el.children(line.choices.map(choice)));
 
   const box = v_flex().id("adv-box").relative().flex_1().min_h(0).rounded(16)
@@ -131,6 +141,7 @@ export function dialog(view, t, cx) {
       .child(menuItem("m-title", "TITLE", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 540, frame: "none", props: { part: "title" } })))
       .child(menuItem("m-cg", "CG", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 960, height: 600, props: { part: "gallery" } })))
       .child(menuItem("m-log", "LOG", false, () => openOverlay({ mod: "maid-adv", kind: "dialog", width: 560, height: 600, props: { part: "log" } })))
+      .child(menuItem("m-smart", "SMART", smart, () => setShared("adv.smart", !smart)))
       .child(menuItem("m-auto", "AUTO", auto, () => setShared("adv.auto", !auto)))
       .child(menuItem("m-skip", "SKIP", false, (_e, cx) => { if (!demo) { view.director.skip(); cx.notify(); } }))
       .child(menuItem("m-cfg", "CONFIG", false, () => run("app.settings"))));
