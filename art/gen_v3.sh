@@ -1,6 +1,7 @@
 #!/bin/bash
 # v3 生图：闭眼 / 张嘴差分（基于普通表情原图编辑）+ 圣诞服装 4 表情 sheet；每批 6 个并行，已有产物跳过
 cd "$(dirname "$0")/ai"
+export ROOT="$(cd ../.. && pwd)"
 job() {
   kind=$1; mid=$2
   case $kind in
@@ -18,8 +19,9 @@ Redraw the attached visual-novel expression sheet of this SAME original characte
   esac
   [ -f "$out" ] && return
   mkdir -p "$dir"
-  echo "$prompt" > "$dir/prompt.txt"
-  codex exec --skip-git-repo-check -s workspace-write -C "$PWD/$dir" -i "$ref" - < "$dir/prompt.txt" > "$dir/codex.log" 2>&1
+  # 存档的 prompt 去掉本机绝对路径（发给 codex 的仍是完整路径）
+  echo "${prompt//$ROOT\//}" > "$dir/prompt.txt"
+  echo "$prompt" | codex exec --skip-git-repo-check -s workspace-write -C "$PWD/$dir" -i "$ref" - > "$dir/codex.log" 2>&1
 }
 export -f job
 for mid in ichigo yoru purin yukimi koko soda budou mikan rin; do
